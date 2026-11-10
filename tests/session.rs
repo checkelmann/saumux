@@ -163,9 +163,12 @@ impl Client {
         }
     }
     fn until(&mut self, needle: &str) {
+        self.until_screen(needle, |contents| contents.contains(needle));
+    }
+    fn until_screen(&mut self, description: &str, ready: impl Fn(&str) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
-            if self.screen.screen().contents().contains(needle) {
+            if ready(&self.screen.screen().contents()) {
                 return;
             }
             match self.rx.recv_timeout(Duration::from_millis(100)) {
@@ -175,7 +178,7 @@ impl Client {
             }
             assert!(
                 Instant::now() < deadline,
-                "missing {needle:?}, screen:\n{}",
+                "waiting for {description:?}, screen:\n{}",
                 self.screen.screen().contents()
             );
         }
@@ -521,9 +524,9 @@ fn scrollback_keeps_lines_that_leave_the_live_screen() {
     let mut client = s.attach(100, 30);
     client.until("HISTORY-79");
     client.key(KeyCode::PageUp, KeyModifiers::SHIFT);
-    client.drain();
-    assert!(!client.screen.screen().contents().contains("HISTORY-79"));
-    assert!(client.screen.screen().contents().contains("HISTORY-"));
+    client.until_screen("scrollback frame", |contents| {
+        !contents.contains("HISTORY-79") && contents.contains("HISTORY-")
+    });
     client.key(KeyCode::PageDown, KeyModifiers::SHIFT);
     client.until("HISTORY-79");
 }
