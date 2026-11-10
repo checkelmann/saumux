@@ -1,0 +1,4 @@
+# saumux uses the screen-compatible xterm subset implemented by vt100.
+# Install: tic -x -o ~/.terminfo terminfo/saumux.terminfo
+saumux-256color|saumux text-mode desktop terminal,
+    use=screen-256color,

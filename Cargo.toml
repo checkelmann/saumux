@@ -1,0 +1,24 @@
+[package]
+name = "saumux"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "A retro text-mode desktop and terminal multiplexer"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+crossterm = { version = "0.29", features = ["serde"] }
+portable-pty = "0.9"
+vt100 = "0.18"
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+serde_json = "1"
+unicode-width = "0.2"
+base64 = "0.22"
+libc = "0.2"
+signal-hook = "0.3"
+
+[profile.release]
+lto = "thin"
+strip = true

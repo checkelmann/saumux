@@ -1,0 +1,8 @@
+/target
+*.sock
+
+/dist
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
