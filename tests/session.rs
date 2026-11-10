@@ -166,9 +166,12 @@ impl Client {
         self.until_screen(needle, |contents| contents.contains(needle));
     }
     fn until_screen(&mut self, description: &str, ready: impl Fn(&str) -> bool) {
+        self.until_render(description, |screen| ready(&screen.contents()));
+    }
+    fn until_render(&mut self, description: &str, ready: impl Fn(&vt100::Screen) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
-            if ready(&self.screen.screen().contents()) {
+            if ready(self.screen.screen()) {
                 return;
             }
             match self.rx.recv_timeout(Duration::from_millis(100)) {
@@ -644,4 +647,135 @@ fn bundled_browser_mouse_opens_a_file_in_a_separate_editor_window() {
     }
     client.until("browser content");
     assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn live_themes_repaint_existing_components_and_all_clients_without_restarting() {
+    use vt100::Color;
+    let s = Session::start(&["/bin/sh"]);
+    let mut client = s.attach(100, 30);
+    client.until("System");
+    s.ctl("editor.new", &[]);
+    client.until("Ctrl+S Save");
+    client.text("unsaved theme text");
+    client.until("unsaved theme text");
+    let editor = s.ctl("list", &[])[1].clone();
+    let ex = editor["rect"]["x"].as_u64().unwrap() as u16 + 1;
+    let ey = editor["rect"]["y"].as_u64().unwrap() as u16 + 2;
+    let mut second = s.attach(100, 30);
+    second.until("unsaved theme text");
+    let cell_is = |screen: &vt100::Screen, x, y, fg, bg| {
+        screen
+            .cell(y, x)
+            .is_some_and(|c| c.fgcolor() == Color::Idx(fg) && c.bgcolor() == Color::Idx(bg))
+    };
+    s.ctl("theme.set", &["amber"]);
+    client.until_render("amber desktop and editor", |screen| {
+        cell_is(screen, 0, 0, 0, 3) && cell_is(screen, ex, ey, 14, 0)
+    });
+    second.until_render("second client's amber editor", |screen| {
+        cell_is(screen, ex, ey, 14, 0)
+    });
+    assert!(
+        client
+            .screen
+            .screen()
+            .contents()
+            .contains("unsaved theme text")
+    );
+    s.ctl("browser.open", &[s.root.to_str().unwrap()]);
+    client.until("entries");
+    let windows = s.ctl("list", &[]);
+    let browser = &windows[2];
+    let bx = browser["rect"]["x"].as_u64().unwrap() as u16 + 1;
+    let by = browser["rect"]["y"].as_u64().unwrap() as u16 + 2;
+    s.ctl("theme.set", &["phosphor"]);
+    client.until_render("green browser and background editor", |screen| {
+        cell_is(screen, bx, by, 10, 0) && cell_is(screen, ex, ey, 10, 0)
+    });
+    let after = s.ctl("list", &[]);
+    assert_eq!(after[1]["pid"], editor["pid"]);
+    assert_eq!(after[2]["pid"], browser["pid"]);
+    // Changing the theme preserves the editor's dirty buffer and close prompt.
+    s.ctl("window.focus", &[editor["id"].to_string().as_str()]);
+    client.until("unsaved theme text");
+    client.key(KeyCode::F(4), KeyModifiers::ALT);
+    client.until("Save changes?");
+}
+
+#[test]
+fn theme_picker_keyboard_mouse_and_configuration_reload() {
+    let s = Session::start(&["/bin/sh"]);
+    let mut client = s.attach(100, 30);
+    client.until("System");
+    client.key(KeyCode::Char('t'), KeyModifiers::ALT);
+    client.until("Colour themes");
+    client.key(KeyCode::Esc, KeyModifiers::NONE);
+    client.drain();
+    let current = |list: &serde_json::Value| {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["active"] == true)
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(current(&s.ctl("theme.list", &[])), "borland");
+    client.key(KeyCode::Char('t'), KeyModifiers::ALT);
+    client.until("Colour themes");
+    client.key(KeyCode::Down, KeyModifiers::NONE);
+    client.key(KeyCode::Down, KeyModifiers::NONE);
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until_render("amber menu bar", |screen| {
+        screen.cell(0, 0).unwrap().bgcolor() == vt100::Color::Idx(3)
+    });
+    assert_eq!(current(&s.ctl("theme.list", &[])), "amber");
+    client.key(KeyCode::Char('t'), KeyModifiers::ALT);
+    client.until("Colour themes");
+    // At 100x30 the 62x9 picker starts at (19,10); Paper is row six.
+    client.event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 22,
+        row: 16,
+        modifiers: KeyModifiers::NONE,
+    }));
+    client.until_render("paper desktop", |screen| {
+        screen.cell(1, 0).unwrap().bgcolor() == vt100::Color::Idx(7)
+    });
+    assert_eq!(current(&s.ctl("theme.list", &[])), "paper");
+    s.ctl("theme.next", &[]);
+    assert_eq!(current(&s.ctl("theme.list", &[])), "borland");
+    let directory = s.root.join("config/saumux");
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(
+        directory.join("config.toml"),
+        "[look]\ntheme = 'midnight'\n",
+    )
+    .unwrap();
+    s.ctl("config.reload", &[]);
+    client.until_render("midnight bar after reload", |screen| {
+        screen.cell(0, 0).unwrap().bgcolor() == vt100::Color::Idx(8)
+    });
+    assert_eq!(current(&s.ctl("theme.list", &[])), "midnight");
+    let mut socket = UnixStream::connect(&s.socket).unwrap();
+    protocol::send(
+        &mut socket,
+        &Request::Control {
+            command: "theme.set".into(),
+            args: vec!["not-a-theme".into()],
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        protocol::receive(&mut socket).unwrap(),
+        Response::Error(_)
+    ));
+    assert_eq!(current(&s.ctl("theme.list", &[])), "midnight");
+    drop(client);
+    let mut reattached = s.attach(100, 30);
+    reattached.until_render("theme survives detach", |screen| {
+        screen.cell(0, 0).unwrap().bgcolor() == vt100::Color::Idx(8)
+    });
 }

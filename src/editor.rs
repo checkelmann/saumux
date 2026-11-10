@@ -371,7 +371,7 @@ impl Editor {
     }
     fn draw(&mut self, width: u16, height: u16) -> Grid {
         self.visible(width, height);
-        let theme = crate::theme::Theme::default();
+        let theme = crate::theme::current();
         let mut grid = Grid::new(width, height);
         grid.fill(0, 0, width, height, " ", theme.editor.clone());
         builtin::toolbar(&mut grid, 0, ACTIONS);

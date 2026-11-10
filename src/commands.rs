@@ -7,6 +7,18 @@ pub struct Command {
 pub const MENUS: &[&str] = &["System", "File", "Edit", "View", "Window", "Help"];
 pub const COMMANDS: &[Command] = &[
     Command {
+        name: "theme.set",
+        label: "Colour theme…",
+        menu: 3,
+        shortcut: "Alt+t",
+    },
+    Command {
+        name: "theme.next",
+        label: "Next colour theme",
+        menu: 3,
+        shortcut: "",
+    },
+    Command {
         name: "browser.open",
         label: "Browse files…",
         menu: 1,

@@ -49,7 +49,30 @@ struct SocketGuard(PathBuf);
 impl Drop for SocketGuard {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
+        let _ = fs::remove_file(self.0.with_extension("theme"));
     }
+}
+pub fn theme_path(name: &str) -> Result<PathBuf> {
+    Ok(socket_path(name)?.with_extension("theme"))
+}
+pub fn write_theme(name: &str, theme: crate::theme::ThemeId) -> Result<()> {
+    use std::io::Write;
+    let path = theme_path(name)?;
+    let temp = path.with_extension(format!("theme-tmp-{}", std::process::id()));
+    let result = (|| -> Result<()> {
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(&temp)?;
+        writeln!(file, "{}", theme.id())?;
+        fs::rename(&temp, &path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(temp);
+    }
+    result
 }
 
 pub fn runtime_dir() -> Result<PathBuf> {
@@ -271,6 +294,7 @@ pub fn server(name: String, program: Vec<String>, layout: Option<PathBuf>) -> Re
     fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
     let (events, rx) = mpsc::sync_channel(256);
     let mut app = App::new(name, Config::load()?, events.clone());
+    write_theme(&app.name, app.config.look.theme)?;
     if let Some(layout) = layout {
         app.load_layout(&layout)?;
     } else if !program.is_empty() {

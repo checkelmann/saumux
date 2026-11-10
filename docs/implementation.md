@@ -35,10 +35,21 @@ recorded in Cargo.lock and each upstream package.
 ## Appearance
 
 The original two-colour requirement was removed. `theme.rs` defines semantic
-roles in a Borland-inspired 16-colour palette for desktop surfaces, menus,
-focus, buttons, scroll bars and the bundled applications. The compositor sends
+roles for six 16-colour palettes: Borland, Norton, Amber, Phosphor, Midnight and
+Paper. They cover desktop surfaces, menus, focus, buttons, scroll bars and bundled
+applications. View → Colour theme (Alt+t), `theme.set` and `theme.next` change the
+current session immediately; `look.theme` chooses the default for new sessions. The compositor sends
 standard/bright ANSI sequences for these colours; the terminal palette determines
-the exact shades. Program colour output is preserved by default.
+the exact shades. Program colour output is preserved by default. Default ink and
+paper follow the active theme; explicit host/hex overrides take precedence.
+
+The server publishes the selected theme to a mode-0600 `<session>.theme` sidecar
+in the private socket directory, using an atomic rename. Bundled applications
+inherit `SAUMUX_THEME_FILE` and check it at most once every 100 ms. Their normal
+idle redraw loop picks up changes without injected keystrokes, restarting PTYs,
+or losing editing state. Theme changes are shared by all clients and survive
+client disconnects. Session shutdown removes the sidecar; configuration files are
+not rewritten by the picker.
 
 ## Decisions and bounds
 
@@ -68,7 +79,9 @@ Automated checks exercise shell input/output, vim alternate-screen editing,
 htop on Linux, overlap and wide glyphs, keyboard/mouse input translation,
 outline-resize commit/SIGWINCH, clipboard export and bracketed paste, tiling,
 shelf activity, detach/reattach, smallest-client sizing, saving/reloading layouts, browser-to-editor opening, UTF-8 Save As/reopen, and
-unsaved editor close/cancel/save behavior.
+unsaved editor close/cancel/save behavior, live theme changes across open
+components and clients, theme-picker mouse/keyboard operation, configuration
+reload, and detach/reattach theme persistence.
 The separate controlling-PTY test checks the real client and exact terminal
 settings restoration after detach and SIGTERM. CI covers Linux and macOS.
 

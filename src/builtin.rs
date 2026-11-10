@@ -55,7 +55,11 @@ impl Surface {
         }
         let mut stdout = io::stdout().lock();
         write!(stdout, "\x1b]2;{title}\x07")?;
-        stdout.write_all(&grid.diff(self.previous.as_ref(), &Look::default()))?;
+        let look = Look {
+            theme: crate::theme::current_id(),
+            ..Look::default()
+        };
+        stdout.write_all(&grid.diff(self.previous.as_ref(), &look))?;
         stdout.flush()?;
         self.previous = Some(grid);
         self.title = title;
@@ -84,18 +88,11 @@ impl Drop for Surface {
 }
 
 pub fn bar(grid: &mut Grid, y: u16, text: &str) {
-    grid.fill(
-        0,
-        y,
-        grid.cols,
-        1,
-        " ",
-        crate::theme::Theme::default().status,
-    );
-    grid.text(0, y, text, grid.cols, crate::theme::Theme::default().status);
+    grid.fill(0, y, grid.cols, 1, " ", crate::theme::current().status);
+    grid.text(0, y, text, grid.cols, crate::theme::current().status);
 }
 pub fn toolbar(grid: &mut Grid, y: u16, actions: &[(&str, &str)]) {
-    let theme = crate::theme::Theme::default();
+    let theme = crate::theme::current();
     grid.fill(0, y, grid.cols, 1, " ", theme.menu.clone());
     let mut x = 0;
     for (label, action) in actions {
@@ -123,6 +120,7 @@ pub fn action_at<'a>(x: u16, actions: &[(&str, &'a str)]) -> Option<&'a str> {
 // Render tabs, wide glyphs and combining marks while clipping in whole cells.
 // Returning character indices lets the editor use the identical geometry for clicks.
 pub fn line(grid: &mut Grid, y: u16, text: &[char], left: usize, width: u16) {
+    let theme = crate::theme::current();
     let mut column = 0usize;
     let mut previous = None;
     for &c in text {
@@ -148,14 +146,7 @@ pub fn line(grid: &mut Grid, y: u16, text: &[char], left: usize, width: u16) {
         if column >= left && column + cells <= left + width as usize {
             let x = (column - left) as u16;
             if c == '\t' {
-                grid.fill(
-                    x,
-                    y,
-                    cells as u16,
-                    1,
-                    " ",
-                    crate::theme::Theme::default().editor,
-                );
+                grid.fill(x, y, cells as u16, 1, " ", theme.editor.clone());
                 previous = None;
             } else {
                 grid.put(
@@ -167,7 +158,7 @@ pub fn line(grid: &mut Grid, y: u16, text: &[char], left: usize, width: u16) {
                         c.to_string()
                     },
                     cells.min(2) as u8,
-                    crate::theme::Theme::default().editor,
+                    theme.editor.clone(),
                 );
                 previous = Some(x);
             }
@@ -255,6 +246,7 @@ impl Prompt {
         self.text = chars.into_iter().collect();
     }
     pub fn draw(&self, grid: &mut Grid) {
+        let theme = crate::theme::current();
         let y = grid.rows.saturating_sub(1);
         let prefix = format!("{}: ", self.label);
         let start = prefix.chars().count() as u16;
@@ -272,7 +264,7 @@ impl Prompt {
                     y,
                     &cell.text,
                     cell.width,
-                    crate::theme::Theme::default().field,
+                    theme.field.clone(),
                 );
             }
         }

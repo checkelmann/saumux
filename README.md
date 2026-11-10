@@ -59,6 +59,7 @@ scroll bar. Title-bar buttons close and zoom the window.
 | Select using the keyboard | Alt+Space, arrows, Enter to copy |
 | Copy / paste internal clipboard | Alt+c / Shift+Insert |
 | Previous / next workspace | Alt+Left / Alt+Right |
+| Colour theme picker | Alt+t |
 | Help | F1 |
 
 Every function-key label in the bottom bar is clickable. Menus also contain
@@ -78,18 +79,42 @@ Reserved keys can conflict with programs such as htop and mc. Rebind or unbind
 them in the configuration. macOS or the host terminal may also intercept function
 keys or Alt combinations; the menu remains accessible with the mouse.
 
-## Retro appearance
+## Live colour themes
 
-The default desktop uses a Borland / Turbo Vision inspired palette: blue desktop
-and work areas, cyan active titles, silver menus, red mnemonic letters, yellow
-scroll thumbs and key hints, and black hard shadows. The bundled editor uses
-yellow text on blue; the browser highlights selected entries in cyan and marks
-directories with bright text. Windows retain program colours by default.
+Open **View → Colour theme…** or press **Alt+t** to choose a palette. Use arrows
+and Enter, or click a theme. The picker includes a colour swatch for each option;
+Esc closes it without changing anything.
 
-`look.ink` and `look.paper` set the fallback colours for program output. Menus,
-frames and the bundled applications use the shared retro palette. Selecting
-`content = "mono"` is still available for individual program preferences; the
-interface itself is now colourful. The former two-colour restriction is removed.
+| Theme | Appearance |
+| --- | --- |
+| Borland | Classic blue, silver menus, cyan titles and yellow editor text |
+| Norton | Blue panels with cyan menus and yellow highlights |
+| Amber | Warm amber text on black |
+| Phosphor | Green CRT text on black |
+| Midnight | Dark charcoal with violet and cyan accents |
+| Paper | Light paper with dark text and blue accents |
+
+Changes apply to the desktop, menus, frames, default terminal colours, and all
+open bundled editors/browsers within about 100 ms. Running programs keep their
+state, unsaved documents stay open, and every attached client sees the same
+session theme. Program-specified colours are preserved.
+
+```sh
+saumux ctl theme.list
+saumux ctl theme.set amber
+saumux ctl theme.next
+```
+
+The choice belongs to the current session and survives detach/reattach. To choose
+a default for new sessions, set `theme = "midnight"` in `[look]` in the configuration.
+**System → Reload configuration** also applies the configured theme to a running
+session. Selecting a theme does not rewrite the configuration file.
+
+`look.ink = "theme"` and `look.paper = "theme"` follow the palette for default
+program output. You can override either with `"default"` for the host terminal's
+colour or an explicit `"#RRGGBB"`; explicit overrides remain in place when changing
+themes. The interface uses the shared theme roles. `content = "mono"` remains an
+optional setting for program output.
 
 ## File browser and editor
 
@@ -180,8 +205,9 @@ configuration leaves the existing configuration active.
 start = ["$SHELL"]
 
 [look]
-ink = "#aaaaaa"       # default program foreground; "default" uses the host
-paper = "#0000aa"     # default program background; "default" uses the host
+theme = "borland"     # borland, norton, amber, phosphor, midnight, paper
+ink = "theme"         # theme default; "default" uses the host; or "#RRGGBB"
+paper = "theme"       # theme default; "default" uses the host; or "#RRGGBB"
 content = "color"     # preserve program colours; optional "mono" maps attributes
 shadow = true
 

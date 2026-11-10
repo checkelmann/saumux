@@ -57,6 +57,9 @@ struct Selection {
     keyboard: bool,
     dragging: bool,
 }
+struct ThemePicker {
+    selected: usize,
+}
 #[derive(Serialize, Deserialize)]
 struct Layout {
     windows: Vec<LayoutWindow>,
@@ -86,6 +89,7 @@ pub struct App {
     pub help: bool,
     pub confirmation: bool,
     pub list: Option<usize>,
+    theme_picker: Option<ThemePicker>,
     pointers: HashMap<u64, (u16, u16)>,
     next_id: u64,
     drag: Option<Drag>,
@@ -113,6 +117,7 @@ impl App {
             help: false,
             confirmation: false,
             list: None,
+            theme_picker: None,
             pointers: HashMap::new(),
             next_id: 1,
             drag: None,
@@ -241,7 +246,11 @@ impl App {
             .iter()
             .filter(|c| c.menu == index)
             .map(|c| MenuEntry {
-                label: c.label.into(),
+                label: if c.name == "theme.set" {
+                    format!("Colour theme… ({})", self.config.look.theme.label())
+                } else {
+                    c.label.into()
+                },
                 command: c.name.into(),
                 shortcut: commands::shortcut(c.name, &self.config),
             })
@@ -277,6 +286,19 @@ impl App {
             return Ok(json!(null));
         }
         match name {
+            "theme.set"=>{
+                if let Some(name)=args.first() {
+                    if args.len()!=1 {bail!("theme.set expects one theme name");}
+                    self.apply_theme(name.parse()?)?;
+                    self.theme_picker=None;
+                } else {self.theme_picker=Some(ThemePicker {selected:crate::theme::ThemeId::ALL.iter().position(|&id|id==self.config.look.theme).unwrap_or(0)});}
+            }
+            "theme.next"=>{
+                let ids=crate::theme::ThemeId::ALL;
+                let index=ids.iter().position(|&id|id==self.config.look.theme).unwrap_or(0);
+                self.apply_theme(ids[(index+1)%ids.len()])?;
+            }
+            "theme.list"=>return Ok(json!(crate::theme::ThemeId::ALL.map(|id|json!({"id":id.id(),"label":id.label(),"description":id.description(),"active":id==self.config.look.theme})))),
             "browser.open"|"editor.new"|"editor.open" => {
                 let kind=if name=="browser.open"||(name=="editor.open"&&args.is_empty()) {"__files"} else {"__edit"};
                 let mut paths=args.to_vec();
@@ -362,6 +384,7 @@ impl App {
             "config.reload" => {
                 let config=Config::load()?;
                 for (key,value) in &config.keys { if !value.is_empty()&&!COMMANDS.iter().any(|c|c.name==value) { bail!("unknown command {value} for key {key}"); } }
+                crate::session::write_theme(&self.name,config.look.theme)?;
                 self.config=config; self.status="Configuration reloaded".into();
             }
             "layout.save" => {
@@ -374,6 +397,12 @@ impl App {
             _ => bail!("unknown command: {name}"),
         }
         Ok(json!(null))
+    }
+    fn apply_theme(&mut self, id: crate::theme::ThemeId) -> Result<()> {
+        crate::session::write_theme(&self.name, id)?;
+        self.config.look.theme = id;
+        self.status = format!("{} theme", id.label());
+        Ok(())
     }
     pub fn save_layout(&self, path: &std::path::Path) -> Result<()> {
         let layout = Layout {
@@ -486,7 +515,7 @@ impl App {
         match event {
             Event::Key(key) if key.kind != KeyEventKind::Release => self.key(key, client)?,
             Event::Mouse(mouse) => self.mouse(mouse, client)?,
-            Event::Paste(text) => self.paste(text)?,
+            Event::Paste(text) if self.theme_picker.is_none() => self.paste(text)?,
             Event::FocusLost => {
                 self.pointers.remove(&client);
                 if self.drag.as_ref().is_some_and(|d| d.owner == client) {
@@ -511,6 +540,23 @@ impl App {
         }
         if self.help {
             self.help = false;
+            return Ok(());
+        }
+        if let Some(picker) = &mut self.theme_picker {
+            let count = crate::theme::ThemeId::ALL.len();
+            let selected = picker.selected;
+            match key.code {
+                KeyCode::Esc => self.theme_picker = None,
+                KeyCode::Up => picker.selected = (selected + count - 1) % count,
+                KeyCode::Down => picker.selected = (selected + 1) % count,
+                KeyCode::Home => picker.selected = 0,
+                KeyCode::End => picker.selected = count - 1,
+                KeyCode::Enter => {
+                    self.apply_theme(crate::theme::ThemeId::ALL[selected])?;
+                    self.theme_picker = None;
+                }
+                _ => {}
+            }
             return Ok(());
         }
         if let Some(selected) = self.list {
@@ -675,6 +721,38 @@ impl App {
         if self.help {
             if left {
                 self.help = false;
+            }
+            return Ok(());
+        }
+        if let Some(picker) = &self.theme_picker {
+            let selected = picker.selected;
+            let r = self.theme_picker_geometry();
+            let visible = r.h.saturating_sub(3) as usize;
+            let offset = selected.saturating_sub(visible.saturating_sub(1));
+            match event.kind {
+                MouseEventKind::ScrollUp => {
+                    self.theme_picker.as_mut().unwrap().selected = selected.saturating_sub(1)
+                }
+                MouseEventKind::ScrollDown => {
+                    self.theme_picker.as_mut().unwrap().selected =
+                        (selected + 1).min(crate::theme::ThemeId::ALL.len() - 1)
+                }
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if x > r.x
+                        && x < r.x + r.w.saturating_sub(1)
+                        && y > r.y
+                        && y < r.y + r.h.saturating_sub(2)
+                    {
+                        let index = offset + (y - r.y - 1) as usize;
+                        if let Some(&id) = crate::theme::ThemeId::ALL.get(index) {
+                            self.apply_theme(id)?;
+                            self.theme_picker = None;
+                        }
+                    } else {
+                        self.theme_picker = None;
+                    }
+                }
+                _ => {}
             }
             return Ok(());
         }
@@ -993,9 +1071,18 @@ impl App {
             self.rows.saturating_sub(h) / 2,
         )
     }
+    fn theme_picker_geometry(&self) -> Rect {
+        let w = self.cols.min(62);
+        let h = self
+            .rows
+            .saturating_sub(2)
+            .min(crate::theme::ThemeId::ALL.len() as u16 + 3);
+        let (x, y) = self.dialog_origin(w, h);
+        Rect { x, y, w, h }
+    }
     pub fn compose(&self, client: u64, ascii: bool, console: bool) -> Grid {
         let mut grid = Grid::new(self.cols, self.rows);
-        let theme = crate::theme::Theme::default();
+        let theme = crate::theme::Theme::named(self.config.look.theme);
         let normal = theme.frame.clone();
         let inverse = theme.menu.clone();
         grid.fill(
@@ -1422,7 +1509,63 @@ impl App {
                 theme.warning.clone(),
             );
         }
+        if let Some(picker) = &self.theme_picker {
+            let r = self.theme_picker_geometry();
+            grid.fill(r.x + 1, r.y + 1, r.w, r.h, " ", theme.shadow.clone());
+            frame(&mut grid, r, ascii, theme.dialog.clone());
+            grid.text(
+                r.x + 2,
+                r.y,
+                " Colour themes ",
+                r.w.saturating_sub(4),
+                theme.dialog.clone(),
+            );
+            let visible = r.h.saturating_sub(3) as usize;
+            let offset = picker.selected.saturating_sub(visible.saturating_sub(1));
+            for (row, id) in crate::theme::ThemeId::ALL
+                .iter()
+                .enumerate()
+                .skip(offset)
+                .take(visible)
+            {
+                let y = r.y + 1 + (row - offset) as u16;
+                let style = if row == picker.selected {
+                    theme.selected.clone()
+                } else {
+                    theme.dialog.clone()
+                };
+                grid.fill(r.x + 1, y, r.w.saturating_sub(2), 1, " ", style.clone());
+                let label = format!(
+                    "{} {:10} {}",
+                    if *id == self.config.look.theme {
+                        "*"
+                    } else {
+                        " "
+                    },
+                    id.label(),
+                    id.description()
+                );
+                grid.text(r.x + 2, y, &label, r.w.saturating_sub(10), style);
+                if r.w > 12 {
+                    grid.text(
+                        r.x + r.w - 7,
+                        y,
+                        " Aa ",
+                        4,
+                        crate::theme::Theme::named(*id).editor,
+                    );
+                }
+            }
+            grid.text(
+                r.x + 2,
+                r.y + r.h.saturating_sub(2),
+                "Click / Enter applies · Esc cancels",
+                r.w.saturating_sub(4),
+                theme.dialog.clone(),
+            );
+        }
         let modal = self.menu.is_some()
+            || self.theme_picker.is_some()
             || self.help
             || self.confirmation
             || self.list.is_some()
@@ -1466,7 +1609,7 @@ impl App {
                 h: height,
             },
             ascii,
-            crate::theme::Theme::default().dialog,
+            crate::theme::Theme::named(self.config.look.theme).dialog,
         );
         for (i, line) in lines
             .iter()
@@ -1478,7 +1621,7 @@ impl App {
                 y + 1 + i as u16,
                 line,
                 width.saturating_sub(4),
-                crate::theme::Theme::default().dialog,
+                crate::theme::Theme::named(self.config.look.theme).dialog,
             );
         }
     }
@@ -1492,7 +1635,12 @@ impl App {
         if y == self.rows - 1 {
             return self.keybar_at(x).is_some();
         }
-        if self.menu.is_some() || self.list.is_some() || self.help || self.confirmation {
+        if self.menu.is_some()
+            || self.list.is_some()
+            || self.help
+            || self.confirmation
+            || self.theme_picker.is_some()
+        {
             return true;
         }
         self.windows

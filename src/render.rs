@@ -41,7 +41,17 @@ impl Style {
             s.push_str(";7");
         }
         for (code, color, configured) in [(38, self.fg, &look.ink), (48, self.bg, &look.paper)] {
-            match color.unwrap_or(vt100::Color::Default) {
+            let mut color = color.unwrap_or(vt100::Color::Default);
+            if color == vt100::Color::Default && configured == "theme" {
+                let palette = crate::theme::Theme::named(look.theme);
+                color = if code == 38 {
+                    palette.text.fg
+                } else {
+                    palette.text.bg
+                }
+                .unwrap_or(vt100::Color::Default);
+            }
+            match color {
                 vt100::Color::Default => {
                     if let Some((r, g, b)) = parse_color(configured) {
                         let _ = write!(s, ";{code};2;{r};{g};{b}");
@@ -200,6 +210,31 @@ impl Grid {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn theme_defaults_follow_palette_while_program_colours_are_preserved() {
+        for id in crate::theme::ThemeId::ALL {
+            let look = Look {
+                theme: id,
+                ..Look::default()
+            };
+            let mut grid = Grid::new(4, 2);
+            grid.put(1, 0, "X", 1, crate::theme::colors(1, 2));
+            let mut parser = vt100::Parser::new(2.try_into().unwrap(), 4.try_into().unwrap(), 0);
+            parser.process(&grid.diff(None, &look));
+            let palette = crate::theme::Theme::named(id);
+            let default = parser.screen().cell(0, 0).unwrap();
+            assert_eq!(Some(default.fgcolor()), palette.text.fg);
+            assert_eq!(Some(default.bgcolor()), palette.text.bg);
+            assert_eq!(
+                parser.screen().cell(0, 1).unwrap().fgcolor(),
+                vt100::Color::Idx(1)
+            );
+            assert_eq!(
+                parser.screen().cell(0, 1).unwrap().bgcolor(),
+                vt100::Color::Idx(2)
+            );
+        }
+    }
     #[test]
     fn retro_roles_survive_terminal_encoding_and_emulation() {
         let theme = crate::theme::Theme::default();

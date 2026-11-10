@@ -119,6 +119,7 @@ impl Window {
         cmd.env("COLORTERM", "truecolor");
         cmd.env("SAUMUX", session);
         cmd.env("SAUMUX_WINDOW", id.to_string());
+        cmd.env("SAUMUX_THEME_FILE", crate::session::theme_path(session)?);
         let child = pair
             .slave
             .spawn_command(cmd)

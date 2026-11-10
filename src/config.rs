@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Look {
+    pub theme: crate::theme::ThemeId,
     pub ink: String,
     pub paper: String,
     pub content: String,
@@ -13,8 +14,9 @@ pub struct Look {
 impl Default for Look {
     fn default() -> Self {
         Self {
-            ink: "#aaaaaa".into(),
-            paper: "#0000aa".into(),
+            theme: crate::theme::ThemeId::Borland,
+            ink: "theme".into(),
+            paper: "theme".into(),
             content: "color".into(),
             shadow: true,
         }
@@ -58,8 +60,8 @@ impl Config {
             bail!("look.content must be mono or color");
         }
         for color in [&config.look.ink, &config.look.paper] {
-            if color != "default" && parse_color(color).is_none() {
-                bail!("invalid colour {color}: use default or #RRGGBB");
+            if color != "default" && color != "theme" && parse_color(color).is_none() {
+                bail!("invalid colour {color}: use theme, default or #RRGGBB");
             }
         }
         for (key, command) in &config.keys {

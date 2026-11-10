@@ -140,7 +140,7 @@ impl Browser {
         if self.selected >= self.top + visible {
             self.top = self.selected + 1 - visible;
         }
-        let theme = crate::theme::Theme::default();
+        let theme = crate::theme::current();
         let mut grid = Grid::new(width, height);
         grid.fill(0, 0, width, height, " ", theme.text.clone());
         builtin::toolbar(&mut grid, 0, ACTIONS);
