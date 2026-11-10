@@ -1638,7 +1638,11 @@ fn current_cwd(w: &Window) -> PathBuf {
     w.cwd.clone()
 }
 fn local_clock(seconds: u64) -> String {
-    let seconds = seconds as libc::time_t;
+    // Infer the platform's time representation from localtime_r; libc's
+    // explicit time_t alias is deprecated on musl during its time64 transition.
+    let Ok(seconds) = seconds.try_into() else {
+        return "--:--".into();
+    };
     let mut tm = std::mem::MaybeUninit::<libc::tm>::uninit();
     // SAFETY: both pointers refer to valid storage of their specified types.
     if unsafe { libc::localtime_r(&seconds, tm.as_mut_ptr()) }.is_null() {
