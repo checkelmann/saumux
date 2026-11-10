@@ -210,7 +210,7 @@ impl Document {
         if self.path.as_ref() == Some(&target) {
             let current = match read_file(&target) {
                 Ok(bytes) => Some(bytes),
-                Err(e) if !target.exists() => None,
+                Err(_) if !target.exists() => None,
                 Err(e) => return Err(e),
             };
             if current != self.baseline {
