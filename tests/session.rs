@@ -295,7 +295,9 @@ fn vim_alternate_screen_and_program_exit() {
     }
     let s = Session::start(&["vim", "-Nu", "NONE", "-n"]);
     let mut client = s.attach(100, 30);
-    client.until("VIM");
+    // The welcome banner depends on Vim's build and the window height. An
+    // empty-buffer row is stable; inserted text below verifies actual editing.
+    client.until("~");
     client.text("isaumux editor smoke");
     client.key(KeyCode::Esc, KeyModifiers::NONE);
     client.until("saumux editor smoke");
