@@ -72,9 +72,12 @@ struct LayoutWindow {
     workspace: usize,
     shelved: bool,
     color: bool,
+    #[serde(default)]
+    agent: Option<crate::agents::Identity>,
 }
 
 pub struct App {
+    support: crate::support::Support,
     pub name: String,
     pub windows: Vec<Window>,
     pub cols: u16,
@@ -101,8 +104,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(name: String, config: Config, events: SyncSender<ServerEvent>) -> Self {
-        Self {
+    pub fn new(name: String, config: Config, events: SyncSender<ServerEvent>) -> Result<Self> {
+        let support = crate::support::Support::new(&config)?;
+        Ok(Self {
+            support,
             name,
             windows: vec![],
             cols: 80,
@@ -126,7 +131,7 @@ impl App {
             last_title_click: None,
             compact_restore: HashMap::new(),
             events,
-        }
+        })
     }
     pub fn active(&self) -> Option<&Window> {
         self.windows
@@ -262,9 +267,50 @@ impl App {
                 shortcut: String::new(),
             }));
         }
+        entries.extend(self.support.entries(index, &self.windows));
         entries
     }
     pub fn command(&mut self, name: &str, args: &[String], client: u64) -> Result<Value> {
+        if name.starts_with("agent.") || name.starts_with("project.") {
+            let cwd = self
+                .active()
+                .map(current_cwd)
+                .unwrap_or(std::env::current_dir()?);
+            let active = self.active_id();
+            let result =
+                self.support
+                    .command(name, args, &cwd, active, &mut self.windows, &self.config);
+            let (action, value) = match result {
+                Ok(result) => result,
+                Err(error) => {
+                    if client != 0 {
+                        self.support.error(format!("{error:#}"));
+                    }
+                    return Err(error);
+                }
+            };
+            let launched = match self.support_action(action) {
+                Ok(id) => id,
+                Err(error) => {
+                    if client != 0 {
+                        self.support.error(format!("{error:#}"));
+                    }
+                    return Err(error);
+                }
+            };
+            if let Some(id) = launched {
+                return Ok(json!({"id":id}));
+            }
+            if name == "agent.rescan" {
+                self.status = format!("Found {} coding agents", self.support.agents.len());
+            } else if matches!(name, "project.add" | "project.save_current") && !value.is_null() {
+                self.status = format!(
+                    "Saved project {}",
+                    value["name"].as_str().unwrap_or_default()
+                );
+            }
+            return Ok(value);
+        }
         if let Some(suffix) = name.strip_prefix("launcher.") {
             let (menu, index) = suffix.split_once('.').context("invalid launcher")?;
             let menu = menu.parse::<usize>()?;
@@ -386,17 +432,62 @@ impl App {
                 for (key,value) in &config.keys { if !value.is_empty()&&!COMMANDS.iter().any(|c|c.name==value) { bail!("unknown command {value} for key {key}"); } }
                 crate::session::write_theme(&self.name,config.look.theme)?;
                 self.config=config; self.status="Configuration reloaded".into();
+                self.support.agents=crate::agents::discover(&self.config.agents);
             }
             "layout.save" => {
                 let path=args.first().map(PathBuf::from).unwrap_or_else(||Config::path().with_file_name("layout.json"));
                 self.save_layout(&path)?; self.status=format!("Saved {}",path.display()); return Ok(json!({"path":path}));
             }
             "help.show" => { self.help=true; }
-            "list" => return Ok(json!(self.windows.iter().map(|w|json!({"id":w.id,"title":w.title,"rect":w.rect,"pid":w.pid(),"command":w.command,"workspace":w.workspace+1,"shelved":w.shelved,"active":self.active_id()==Some(w.id)})).collect::<Vec<_>>())),
+            "list" => return Ok(json!(self.windows.iter().map(|w|json!({"id":w.id,"title":w.title,"rect":w.rect,"pid":w.pid(),"command":w.command,"workspace":w.workspace+1,"shelved":w.shelved,"active":self.active_id()==Some(w.id),"agent":w.agent.as_ref().map(|a|json!({"id":a.identity.id,"name":a.identity.name,"project":a.identity.project,"needs_attention":a.notice.is_some(),"notice":a.notice}))})).collect::<Vec<_>>())),
             "commands" => return Ok(json!(COMMANDS.iter().map(|c|json!({"name":c.name,"label":c.label,"shortcut":commands::shortcut(c.name,&self.config)})).collect::<Vec<_>>())),
             _ => bail!("unknown command: {name}"),
         }
         Ok(json!(null))
+    }
+    fn support_action(&mut self, action: crate::support::Action) -> Result<Option<u64>> {
+        match action {
+            crate::support::Action::None => {}
+            crate::support::Action::Focus(id) => self.focus(id),
+            crate::support::Action::Launch {
+                command,
+                cwd,
+                agent,
+            } => {
+                let id = self.new_window(command, Some(cwd))?;
+                if let Some(identity) = agent {
+                    let w = self.windows.last_mut().unwrap();
+                    w.title = format!(
+                        "{}{}",
+                        identity.name,
+                        identity
+                            .project
+                            .as_ref()
+                            .map(|p| format!(" — {p}"))
+                            .unwrap_or_default()
+                    );
+                    w.agent = Some(crate::agents::Run::new(identity));
+                }
+                return Ok(Some(id));
+            }
+        }
+        Ok(None)
+    }
+    fn support_choice(&mut self, command: String, client: u64) -> Result<()> {
+        if let Some(path) = command.strip_prefix("project.add.path:") {
+            self.command("project.add", &[path.into()], client)?;
+        } else if let Some(id) = command.strip_prefix("project.remove:") {
+            self.command("project.remove", &[id.into()], client)?;
+        } else {
+            self.command(&command, &[], client)?;
+        }
+        Ok(())
+    }
+    pub fn poll_agents(&mut self) -> bool {
+        self.support.poll(&mut self.windows, &self.config)
+    }
+    pub fn rescan_agents(&mut self) {
+        self.support.agents = crate::agents::discover(&self.config.agents);
     }
     fn apply_theme(&mut self, id: crate::theme::ThemeId) -> Result<()> {
         crate::session::write_theme(&self.name, id)?;
@@ -416,6 +507,7 @@ impl App {
                     workspace: w.workspace,
                     shelved: w.shelved,
                     color: w.color,
+                    agent: w.agent.as_ref().map(|a| a.identity.clone()),
                 })
                 .collect(),
         };
@@ -451,6 +543,7 @@ impl App {
             w.workspace = entry.workspace % 4;
             w.shelved = entry.shelved;
             w.color = entry.color;
+            w.agent = entry.agent.map(crate::agents::Run::new);
         }
         Ok(())
     }
@@ -508,10 +601,19 @@ impl App {
                 text.into_bytes()
             };
             w.send(bytes)?;
+            if let Some(agent) = &mut w.agent {
+                agent.acknowledge();
+            }
         }
         Ok(())
     }
     pub fn event(&mut self, event: Event, client: u64) -> Result<()> {
+        if self.support.active()
+            && let Event::Paste(text) = &event
+        {
+            self.support.paste(text);
+            return Ok(());
+        }
         match event {
             Event::Key(key) if key.kind != KeyEventKind::Release => self.key(key, client)?,
             Event::Mouse(mouse) => self.mouse(mouse, client)?,
@@ -530,6 +632,12 @@ impl App {
         Ok(())
     }
     fn key(&mut self, key: KeyEvent, client: u64) -> Result<()> {
+        if self.support.active() {
+            if let Some(command) = self.support.key(key, self.cols, self.rows)? {
+                self.support_choice(command, client)?;
+            }
+            return Ok(());
+        }
         if self.confirmation {
             match key.code {
                 KeyCode::Char('y' | 'Y') => self.running = false,
@@ -687,6 +795,9 @@ impl App {
                 key,
                 w.parser.screen().application_cursor(),
             ))?;
+            if let Some(agent) = &mut w.agent {
+                agent.acknowledge();
+            }
         }
         Ok(())
     }
@@ -707,6 +818,12 @@ impl App {
             return Ok(());
         }
         let left = event.kind == MouseEventKind::Down(MouseButton::Left);
+        if self.support.active() {
+            if let Some(command) = self.support.mouse(event, self.cols, self.rows) {
+                self.support_choice(command, client)?;
+            }
+            return Ok(());
+        }
         if self.confirmation {
             if left {
                 let (bx, by) = self.dialog_origin(48, 6);
@@ -815,6 +932,14 @@ impl App {
             }
             return Ok(());
         }
+        if y == 0
+            && left
+            && crate::support::Support::pending(&self.windows) > 0
+            && x >= menu_start(MENUS.len())
+        {
+            self.command("agent.attention", &[], client)?;
+            return Ok(());
+        }
         if y == 0 {
             if left && let Some(index) = menu_at(x) {
                 self.menu = if self.menu.as_ref().is_some_and(|m| m.index == index) {
@@ -859,6 +984,18 @@ impl App {
             return Ok(());
         }
         if y == self.rows.saturating_sub(1) {
+            let banner = crate::support::Support::banner(&self.windows, &self.config);
+            if left
+                && crate::support::Support::pending(&self.windows) > 0
+                && x >= self.cols.saturating_sub(banner.len() as u16)
+            {
+                self.command("agent.attention", &[], client)?;
+                return Ok(());
+            }
+            if left && !self.status.is_empty() {
+                self.status.clear();
+                return Ok(());
+            }
             if left && let Some(command) = self.keybar_at(x) {
                 self.command(command, &[], client)?;
             }
@@ -980,11 +1117,13 @@ impl App {
         if program_mouse && !event.modifiers.contains(KeyModifiers::ALT) {
             let bytes = input::encode_mouse(event, local.0, local.1, w.parser.screen());
             if !bytes.is_empty() {
-                self.windows
-                    .iter_mut()
-                    .find(|w| w.id == id)
-                    .unwrap()
-                    .send(bytes)?;
+                let w = self.windows.iter_mut().find(|w| w.id == id).unwrap();
+                w.send(bytes)?;
+                if matches!(event.kind, MouseEventKind::Down(_))
+                    && let Some(agent) = &mut w.agent
+                {
+                    agent.acknowledge();
+                }
             }
         } else {
             match event.kind {
@@ -1112,7 +1251,10 @@ impl App {
                 );
             }
             frame(&mut grid, r, ascii, normal.clone());
-            let title_style = if active == Some(w.id) {
+            let attention = w.agent.as_ref().is_some_and(|a| a.notice.is_some());
+            let title_style = if attention {
+                theme.activity.clone()
+            } else if active == Some(w.id) {
                 theme.title.clone()
             } else {
                 theme.inactive_title.clone()
@@ -1151,7 +1293,7 @@ impl App {
                 3,
                 title_style.clone(),
             );
-            let title = format!(" {} ", w.title);
+            let title = format!(" {}{} ", if attention { "! " } else { "" }, w.title);
             let available = r.w.saturating_sub(10);
             let title_width = unicode_width::UnicodeWidthStr::width(title.as_str())
                 .min(available as usize) as u16;
@@ -1251,12 +1393,23 @@ impl App {
             .filter(|w| w.workspace == self.workspace && w.shelved)
         {
             let width = tab_width(w);
-            let tab_style = if w.activity {
+            let attention = w.agent.as_ref().is_some_and(|a| a.notice.is_some());
+            let tab_style = if w.activity || attention {
                 theme.activity.clone()
             } else {
                 theme.title.clone()
             };
-            let title = format!("[{}{}]", if w.activity { "*" } else { "" }, w.title);
+            let title = format!(
+                "[{}{}]",
+                if attention {
+                    "!"
+                } else if w.activity {
+                    "*"
+                } else {
+                    ""
+                },
+                w.title
+            );
             grid.fill(
                 sx,
                 self.rows.saturating_sub(2),
@@ -1296,8 +1449,20 @@ impl App {
         let clock = local_clock(seconds);
         let right = format!(" {}  {}/4  {} ", self.name, self.workspace + 1, clock);
         let width = unicode_width::UnicodeWidthStr::width(right.as_str()) as u16;
-        if self.cols > menu_start(MENUS.len()) + width {
+        let pending = crate::support::Support::pending(&self.windows);
+        let badge = format!(" !{pending} ");
+        let reserved = if pending > 0 { badge.len() as u16 } else { 0 };
+        if self.cols > menu_start(MENUS.len()) + width + reserved {
             grid.text(self.cols - width, 0, &right, width, inverse.clone());
+        }
+        if pending > 0 && self.cols > menu_start(MENUS.len()) + reserved {
+            grid.text(
+                menu_start(MENUS.len()),
+                0,
+                &badge,
+                reserved,
+                theme.activity.clone(),
+            );
         }
         grid.fill(
             0,
@@ -1356,6 +1521,43 @@ impl App {
                 &context,
                 context_width,
                 inverse.clone(),
+            );
+        }
+        if !self.status.is_empty() {
+            grid.fill(
+                0,
+                self.rows.saturating_sub(1),
+                self.cols,
+                1,
+                " ",
+                theme.status.clone(),
+            );
+            grid.text(
+                0,
+                self.rows.saturating_sub(1),
+                &format!(" {} · click to dismiss", self.status),
+                self.cols,
+                theme.status.clone(),
+            );
+        }
+        if pending > 0 {
+            let banner = crate::support::Support::banner(&self.windows, &self.config);
+            let width = (banner.len() as u16).min(self.cols);
+            let x = self.cols.saturating_sub(width);
+            grid.fill(
+                x,
+                self.rows.saturating_sub(1),
+                width,
+                1,
+                " ",
+                theme.activity.clone(),
+            );
+            grid.text(
+                x,
+                self.rows.saturating_sub(1),
+                &banner,
+                width,
+                theme.activity.clone(),
             );
         }
         if let Some(menu) = &self.menu {
@@ -1564,7 +1766,9 @@ impl App {
                 theme.dialog.clone(),
             );
         }
-        let modal = self.menu.is_some()
+        self.support.draw(&mut grid, &theme, ascii);
+        let modal = self.support.active()
+            || self.menu.is_some()
             || self.theme_picker.is_some()
             || self.help
             || self.confirmation
@@ -1635,7 +1839,8 @@ impl App {
         if y == self.rows - 1 {
             return self.keybar_at(x).is_some();
         }
-        if self.menu.is_some()
+        if self.support.active()
+            || self.menu.is_some()
             || self.list.is_some()
             || self.help
             || self.confirmation
@@ -1690,8 +1895,10 @@ fn menu_at(x: u16) -> Option<usize> {
     (0..MENUS.len()).find(|&i| x >= menu_start(i) && x < menu_start(i + 1))
 }
 fn tab_width(w: &Window) -> u16 {
-    (unicode_width::UnicodeWidthStr::width(w.title.as_str()) as u16 + 3 + u16::from(w.activity))
-        .min(24)
+    (unicode_width::UnicodeWidthStr::width(w.title.as_str()) as u16
+        + 3
+        + u16::from(w.activity || w.agent.as_ref().is_some_and(|a| a.notice.is_some())))
+    .min(24)
 }
 fn ordered(a: (u16, u16), b: (u16, u16)) -> ((u16, u16), (u16, u16)) {
     if (a.1, a.0) <= (b.1, b.0) {
@@ -1799,7 +2006,7 @@ fn local_clock(seconds: u64) -> String {
     let tm = unsafe { tm.assume_init() };
     format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
 }
-fn frame(grid: &mut Grid, r: Rect, ascii: bool, style: Style) {
+pub(crate) fn frame(grid: &mut Grid, r: Rect, ascii: bool, style: Style) {
     grid.fill(r.x, r.y, r.w, r.h, " ", style.clone());
     outline(grid, r, ascii, style);
 }

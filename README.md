@@ -7,7 +7,7 @@ closes.
 
 This is an early implementation of the November 2026 specification. It includes
 the core multiplexer plus a bundled file browser and editor, configuration,
-shelving, workspaces, layout files and multiple clients. See [implementation notes](docs/implementation.md) for limits
+shelving, workspaces, layout files, multiple clients, coding-agent launchers and saved projects. See [implementation notes](docs/implementation.md) for limits
 and validation still needed before treating it as a daily driver.
 
 ## Build and run
@@ -60,6 +60,7 @@ scroll bar. Title-bar buttons close and zoom the window.
 | Copy / paste internal clipboard | Alt+c / Shift+Insert |
 | Previous / next workspace | Alt+Left / Alt+Right |
 | Colour theme picker | Alt+t |
+| Saved projects / agent attention | Alt+p / Alt+a |
 | Help | F1 |
 
 Every function-key label in the bottom bar is clickable. Menus also contain
@@ -115,6 +116,92 @@ program output. You can override either with `"default"` for the host terminal's
 colour or an explicit `"#RRGGBB"`; explicit overrides remain in place when changing
 themes. The interface uses the shared theme roles. `content = "mono"` remains an
 optional setting for program output.
+
+## Coding agents and projects
+
+The **Agents** menu lists installed coding agents directly: Codex, Claude Code,
+Gemini CLI, Aider, OpenCode, Goose, Amp and Cursor Agent. Discovery checks executable
+files on the server's PATH at startup, on attach, and through **Rescan installed
+agents**. It never runs an agent during discovery, installs software or changes
+agent permissions. Start an agent from its menu entry in the active window's
+working directory; its normal authentication and approval flow still applies.
+Agents run in regular PTY windows and survive detach just like shells.
+
+Use **Projects → Add project directory…** to bookmark a directory, or **Save
+active directory** to bookmark the active window's working directory. **Alt+p**
+opens saved projects; choosing one offers installed agents, a shell, the bundled
+browser or a new editor document in that directory. Use arrows/Enter or click.
+Removing a project asks for confirmation and removes only the bookmark; files
+and running programs are kept.
+
+Bookmarks persist in `~/.config/saumux/projects.json` (or under
+`$XDG_CONFIG_HOME/saumux`). Sessions share the file; **Refresh projects** reloads
+changes made elsewhere. Paths are canonicalized, duplicates reuse the existing
+bookmark, and at most 128 projects can be saved.
+
+```sh
+saumux ctl agent.list
+saumux ctl agent.rescan
+saumux ctl project.add ./my-project --name Work
+saumux ctl project.list
+saumux ctl agent.start codex --project Work
+saumux ctl project.remove Work
+```
+
+An agent needing attention gets a coloured `!` on its title/shelf tab and a
+persistent clickable badge in the key bar. **Alt+a** or **Agents → Agent
+attention…** lists alerts across all workspaces and restores/focuses the selected
+agent. Focus alone keeps its alert; typing, pasting or an application mouse click
+acknowledges it. **Clear active agent alert** also clears it. There is no sound.
+
+Attention can be reported explicitly through `ctl`, OSC 9 text notifications,
+OSC 777 notifications or a program's terminal bell. A bell becomes a visual
+notice and is never sent to the host terminal. Numeric OSC 9 progress messages
+are ignored. For agents without notifications, saumux looks for common English
+approval/input prompts after output settles (900 ms by default). These guesses
+say **May need input**; inactivity alone never triggers an alert. Detection is
+best effort and can miss differently worded prompts or flag quoted examples.
+Only windows launched as agents are monitored.
+
+For dependable agent-specific events, connect the agent's documented notification
+hook to the following commands. Agent windows inherit `SAUMUX`, `SAUMUX_WINDOW`
+and `SAUMUX_BIN`, so hooks target their own window even when it is in the
+background. Keep the hook's environment intact. From an external script, supply
+`--session` and `--window` explicitly.
+
+```sh
+"$SAUMUX_BIN" ctl agent.notify waiting "Approval needed"
+"$SAUMUX_BIN" ctl agent.notify attention "Please review"
+"$SAUMUX_BIN" ctl agent.notify done "Turn finished"
+"$SAUMUX_BIN" ctl agent.notify working
+saumux ctl --session work agent.notify waiting --window 2
+saumux ctl agent.ack 2
+```
+
+`working` clears the notice; other states set a persistent visual notice.
+`ctl list --json` includes each window's agent identity, project and attention
+state; `notice.possible` distinguishes prompt guesses from explicit signals.
+Provider hooks are opt-in: saumux does not rewrite their settings or enable
+unattended approvals. Saved layouts retain agent identity and launch commands,
+but not transient alerts or running conversation state.
+
+Additional agents, launch arguments and notification settings can be configured:
+
+```toml
+[notifications]
+detect_prompts = true       # false keeps explicit notifications only
+prompt_delay_ms = 900       # 100..10000
+
+[[agents]]
+id = "custom"
+name = "My coding agent"
+command = ["my-agent", "--some-option"]
+enabled = true
+```
+
+Commands are argument arrays, without shell expansion. A configured ID replaces
+the built-in entry with that ID; `enabled = false` hides it. Use the IDs returned
+by `agent.list` (Cursor Agent's ID is `cursor`). Reload configuration after edits.
 
 ## File browser and editor
 
@@ -226,7 +313,7 @@ label = "Editor"
 run = "vim"
 ```
 
-Launcher entries can be added to `system`, `file`, `edit`, `view`, `window` and
+Launcher entries can be added to `system`, `file`, `edit`, `view`, `window`, `agents`, `projects` and
 `help`. Key names use `Ctrl+`, `Alt+`, `Shift+` in that order, function keys such
 as `F6`, `PgUp`, `PgDn`, `Space`, and crossterm names such as `Insert`, `Left`,
 `Enter`. Use `ctl commands` for action names. Rebinding a command replaces its
@@ -259,8 +346,8 @@ macOS. Linux release executables use musl for static linking. Each archive
 contains `saumux`, documentation, the license and the optional terminfo entry.
 Downloads are accompanied by `SHA256SUMS`.
 
-v0.1.0 is already published. Live theme switching is currently on `main` and
-requires a newer build; it is not in the v0.1.0 downloads.
+v0.1.0 is already published. Live themes and agent/project support require a
+newer build from `main`; they are not in the v0.1.0 downloads.
 
 To publish the next version, update `version` in Cargo.toml, run `cargo check` to update
 Cargo.lock, commit and push those changes, then push the matching version tag:

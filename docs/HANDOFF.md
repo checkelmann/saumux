@@ -36,7 +36,9 @@ saving with checkpointing program state.
 - Cargo.toml still declares version `0.1.0` on this development snapshot. Before
   the next requested release, choose/bump its version and update Cargo.lock.
   Never move the existing v0.1.0 tag to include newer code.
-- The local `target/release/saumux` was rebuilt with live theme support. Build
+- Agent discovery, saved projects and visual agent attention are the current
+  development feature set; they are not included in v0.1.0.
+- The local `target/release/saumux` was rebuilt with live theme and agent support. Build
   artifacts are ignored by Git and must be rebuilt in a fresh checkout.
 
 The initial release workflow completed successfully:
@@ -73,10 +75,24 @@ for a queued job, unless the user asks otherwise.
 The README is the authoritative quick reference for shortcuts and CLI examples.
 The implementation notes map modules to responsibilities and list resource bounds.
 
+- Agents: startup/attach/manual executable discovery for eight common CLIs,
+  literal-argument PTY launches, custom/disabled agents in TOML, direct menu entries.
+- Projects: persisted canonical directory bookmarks, project agent/shell/browser/
+  editor launch dialog, bookmark-only removal and shared cross-session storage.
+- Visual agent notices: title/shelf highlighting, clickable badge and Alt+a
+  attention list across workspaces; explicit hooks/OSC/BEL plus best-effort English
+  prompt detection. No sound, automatic logins, permission changes or provider
+  configuration edits. Alt+p opens saved projects. See README for hook API/limits.
+
 ## Important implementation contracts
 
 - `commands.rs` drives menu entries and configurable keyboard bindings. Add
   interactive actions there rather than inventing a separate prefix/mode system.
+- `agents.rs`, `projects.rs` and `support.rs` own discovery/attention, private
+  shared bookmarks and launch/dialog workflows. Keep them outside the core window
+  manager. Discovery must not execute agents. A prompt guess must stay visibly
+  tentative; focus must not acknowledge it. Actual input or explicit ack does.
+  `SAUMUX_WINDOW`, `SAUMUX_BIN` and `SAUMUX` route opt-in hooks to their own pane.
 - `app.rs` owns window-manager state and composition; `render.rs` owns cells,
   widths, attributes and ANSI differences. Preserve wide-character clipping and
   whole-glyph cleanup when overlapping either half of a wide character.
@@ -132,8 +148,18 @@ isolated temporary runtime/config directories and clean up their own processes.
 Current checks include real PTY programs, editor/browser operations and saving,
 mouse translation, SIGWINCH, clipboard/paste, layouts, multiple clients, live
 recolouring with unchanged process IDs/dirty buffers, picker mouse/keyboard
-selection, configuration reload and theme persistence across detach. The separate
-Python controlling-PTY test checks exact terminal-settings restoration.
+selection, configuration reload and theme persistence across detach. Fake-agent
+fixtures also check project CWDs, dialog errors/removal, background hook targeting,
+prompt and OSC notices, silent rendering and cross-workspace/shelf acknowledgement.
+These tests do not validate every real agent/version or provider hook integration.
+The separate Python controlling-PTY test checks exact terminal-settings restoration.
+
+Latest agent/project validation (2026-11-11): formatting and strict Clippy passed;
+macOS passed 16 unit + 20 integration tests, Linux Docker passed 17 unit + 20
+integration tests (including Linux-only gpm). Both passed the client controlling-PTY
+test. Release helper tests passed and the macOS release binary was rebuilt. The
+four native release targets remain covered by CI; these local results do not
+establish the status of a later CI run.
 
 Three CI issues already fixed must not be reintroduced:
 

@@ -14,6 +14,7 @@ pub struct Callbacks {
     pub title: Option<String>,
     pub bell: bool,
     pub replies: Vec<u8>,
+    pub notification: Option<String>,
 }
 impl vt100::Callbacks for Callbacks {
     fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
@@ -30,6 +31,34 @@ impl vt100::Callbacks for Callbacks {
     }
     fn visual_bell(&mut self, _: &mut vt100::Screen) {
         self.bell = true;
+    }
+    fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
+        let pieces = if params.first().is_some_and(|p| *p == b"9") {
+            if params
+                .get(1)
+                .is_some_and(|p| !p.is_empty() && p.iter().all(u8::is_ascii_digit))
+            {
+                return;
+            }
+            &params[1..]
+        } else if params.first().is_some_and(|p| *p == b"777")
+            && params.get(1).is_some_and(|p| *p == b"notify")
+        {
+            &params[2..]
+        } else {
+            return;
+        };
+        self.notification = Some(
+            pieces
+                .iter()
+                .map(|p| String::from_utf8_lossy(p))
+                .collect::<Vec<_>>()
+                .join(": ")
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(240)
+                .collect(),
+        );
     }
     fn unhandled_csi(
         &mut self,
@@ -73,6 +102,7 @@ pub struct Window {
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
     pub input: SyncSender<Vec<u8>>,
+    pub agent: Option<crate::agents::Run>,
 }
 
 impl Window {
@@ -119,6 +149,7 @@ impl Window {
         cmd.env("COLORTERM", "truecolor");
         cmd.env("SAUMUX", session);
         cmd.env("SAUMUX_WINDOW", id.to_string());
+        cmd.env("SAUMUX_BIN", std::env::current_exe()?);
         cmd.env("SAUMUX_THEME_FILE", crate::session::theme_path(session)?);
         let child = pair
             .slave
@@ -178,6 +209,7 @@ impl Window {
             master: pair.master,
             child,
             input,
+            agent: None,
         })
     }
     pub fn resize(&mut self, rect: Rect) -> Result<()> {
@@ -201,10 +233,16 @@ impl Window {
         if let Some(title) = callbacks.title.take() {
             self.title = title;
         }
-        if self.shelved || callbacks.bell {
+        let bell = callbacks.bell;
+        if self.shelved || bell {
             self.activity = true;
         }
         callbacks.bell = false;
+        if let Some(agent) = &mut self.agent {
+            agent.output(bell, std::mem::take(&mut callbacks.notification));
+        } else {
+            callbacks.notification = None;
+        }
         let replies = std::mem::take(&mut callbacks.replies);
         if !replies.is_empty() {
             let _ = self.input.try_send(replies);
@@ -248,6 +286,25 @@ impl Drop for Window {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn notifications_ignore_progress_and_capture_osc777_and_bell() {
+        let mut parser = vt100::Parser::new_with_callbacks(
+            5.try_into().unwrap(),
+            40.try_into().unwrap(),
+            0,
+            Callbacks::default(),
+        );
+        parser.process(b"\x1b]9;4;1;30\x07");
+        assert!(parser.callbacks().notification.is_none());
+        assert!(!parser.callbacks().bell);
+        parser.process(b"\x1b]777;notify;Agent;Input requested\x1b\\");
+        assert_eq!(
+            parser.callbacks().notification.as_deref(),
+            Some("Agent: Input requested")
+        );
+        parser.process(b"\x07");
+        assert!(parser.callbacks().bell);
+    }
     #[test]
     fn emulator_handles_titles_queries_and_alternate_screen() {
         let mut parser = vt100::Parser::new_with_callbacks(

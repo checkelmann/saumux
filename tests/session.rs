@@ -30,6 +30,9 @@ impl Session {
         Self::start_server(&args)
     }
     fn start_server(args: &[&str]) -> Self {
+        Self::start_configured(args, "")
+    }
+    fn start_configured(args: &[&str], config: &str) -> Self {
         let root = std::env::temp_dir().join(format!(
             "sx-{}-{}",
             std::process::id(),
@@ -37,6 +40,8 @@ impl Session {
         ));
         fs::create_dir_all(&root).unwrap();
         fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("config/saumux")).unwrap();
+        fs::write(root.join("config/saumux/config.toml"), config).unwrap();
         let socket = root.join("saumux/test.sock");
         let log = fs::File::create(root.join("server.log")).unwrap();
         let child = Command::new(env!("CARGO_BIN_EXE_saumux"))
@@ -778,4 +783,243 @@ fn theme_picker_keyboard_mouse_and_configuration_reload() {
     reattached.until_render("theme survives detach", |screen| {
         screen.cell(0, 0).unwrap().bgcolor() == vt100::Color::Idx(8)
     });
+}
+
+fn fake_agent_config(script: &str) -> String {
+    format!(
+        "[notifications]\nprompt_delay_ms = 100\n[[agents]]\nid = 'test'\nname = 'Test agent'\ncommand = ['python3', '-u', '-c', {}]\n",
+        serde_json::to_string(script).unwrap()
+    )
+}
+
+#[test]
+fn project_agent_launch_attention_hooks_and_acknowledgement() {
+    let script = "import os,tty,time; tty.setraw(0); open('agent-started','w').write(os.getcwd()); print('AGENT_READY '+os.getcwd(),flush=True); os.read(0,1); print('INPUT_RECEIVED',flush=True); time.sleep(60)";
+    let s = Session::start_configured(&["--", "/bin/sh"], &fake_agent_config(script));
+    // Discovery inspects executables without starting the agent.
+    assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 1);
+    assert!(
+        s.ctl("agent.list", &[])
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["id"] == "test")
+    );
+    let project_dir = s.root.join("project with spaces; literal");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(project_dir.join("keep.txt"), "keep me").unwrap();
+    let path = project_dir.to_str().unwrap();
+    let project = s.ctl("project.add", &[path, "--name", "Example"]);
+    let project_id = project["id"].to_string();
+    assert_eq!(s.ctl("project.add", &[path])["id"], project["id"]);
+    assert_eq!(s.ctl("project.list", &[]).as_array().unwrap().len(), 1);
+    let mut client = s.attach(120, 36);
+    client.until("Projects");
+    // Launch from the saved-project picker, using only keyboard navigation.
+    client.key(KeyCode::Char('p'), KeyModifiers::ALT);
+    client.until("Saved projects");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("Project: Example");
+    client.until("Start Test agent");
+    // Test agent is alphabetically last among installed built-in agents.
+    let agents = s.ctl("agent.list", &[]);
+    let index = agents
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|a| a["id"] == "test")
+        .unwrap();
+    for _ in 0..index {
+        client.key(KeyCode::Down, KeyModifiers::NONE);
+    }
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("AGENT_READY");
+    assert_eq!(
+        fs::read_to_string(project_dir.join("agent-started")).unwrap(),
+        fs::canonicalize(&project_dir).unwrap().to_str().unwrap()
+    );
+    let list = s.ctl("list", &[]);
+    let agent = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["agent"]["id"] == "test")
+        .unwrap();
+    let id = agent["id"].to_string();
+    assert_eq!(agent["agent"]["project"], "Example");
+    assert_eq!(
+        fs::canonicalize(project_dir.clone())
+            .unwrap()
+            .to_string_lossy(),
+        project["path"].as_str().unwrap()
+    );
+    // A hook invoked inside a pane targets its own window, even in the background.
+    s.ctl("window.workspace", &[]);
+    let output = Command::new(env!("CARGO_BIN_EXE_saumux"))
+        .args(["ctl", "agent.notify", "waiting", "Permission needed"])
+        .env("XDG_RUNTIME_DIR", &s.root)
+        .env("SAUMUX", "test")
+        .env("SAUMUX_WINDOW", &id)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    client.until("!1 agents Alt+a");
+    client.key(KeyCode::Char('a'), KeyModifiers::ALT);
+    client.until("Agent attention");
+    client.until("Permission needed");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("AGENT_READY");
+    assert_eq!(
+        s.ctl("list", &[])
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["id"].as_u64() == id.parse().ok())
+            .unwrap()["agent"]["needs_attention"],
+        true
+    );
+    client.text("y");
+    client.until("INPUT_RECEIVED");
+    let list = s.ctl("list", &[]);
+    assert_eq!(
+        list.as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["id"].as_u64() == id.parse().ok())
+            .unwrap()["agent"]["needs_attention"],
+        false
+    );
+    s.ctl("agent.notify", &["waiting", "--window", &id]);
+    s.ctl("window.shelve", &[]);
+    client.until("!1 agents Alt+a");
+    client.key(KeyCode::Char('a'), KeyModifiers::ALT);
+    client.until("Agent attention");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("INPUT_RECEIVED");
+    assert_eq!(
+        s.ctl("list", &[])
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["id"].as_u64() == id.parse().ok())
+            .unwrap()["shelved"],
+        false
+    );
+    s.ctl("agent.ack", &[&id]);
+    s.ctl("project.remove", &[&project_id]);
+    assert!(project_dir.join("keep.txt").is_file());
+    assert!(s.ctl("project.list", &[]).as_array().unwrap().is_empty());
+}
+
+#[test]
+fn agent_prompt_detection_and_osc_notifications_are_visual_only() {
+    let script = "import os,tty,time; tty.setraw(0); print('Would you like to continue? [y/n]',flush=True); os.read(0,1); os.write(1,b'\\x1b[2J\\x1b[HWorking\\r\\n'); time.sleep(0.3); os.write(1,b'\\x1b]9;Review changes please\\x07'); time.sleep(60)";
+    let s = Session::start_configured(&["--", "/bin/sh"], &fake_agent_config(script));
+    let mut client = s.attach(110, 32);
+    client.until("Projects");
+    let id = s.ctl("agent.start", &["test"])["id"].to_string();
+    client.until("!1 agents Alt+a");
+    let list = s.ctl("list", &[]);
+    let agent = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["id"].as_u64() == id.parse().ok())
+        .unwrap();
+    assert_eq!(agent["agent"]["notice"]["possible"], true);
+    client.key(KeyCode::Char('a'), KeyModifiers::ALT);
+    client.until("May need input:");
+    client.key(KeyCode::Esc, KeyModifiers::NONE);
+    client.text("y");
+    client.until("Working");
+    // OSC 9 ends with BEL, but neither sequence nor a standalone bell reaches the host.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Ok(Response::Render(data)) = client.rx.recv_timeout(Duration::from_millis(100)) {
+            assert!(
+                !data.contains('\x07'),
+                "agent bell escaped into the host terminal"
+            );
+            client.screen.process(data.as_bytes());
+        }
+        let list = s.ctl("list", &[]);
+        let notice = &list
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["id"].as_u64() == id.parse().ok())
+            .unwrap()["agent"]["notice"];
+        if notice["message"] == "Review changes please" {
+            assert_eq!(notice["possible"], false);
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "OSC notification was not detected"
+        );
+    }
+    s.ctl("agent.notify", &["working", "--window", &id]);
+    assert_eq!(
+        s.ctl("list", &[])
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["id"].as_u64() == id.parse().ok())
+            .unwrap()["agent"]["needs_attention"],
+        false
+    );
+}
+
+#[test]
+fn project_directory_dialog_errors_and_mouse_removal_preserve_files() {
+    let s = Session::start(&["/bin/sh"]);
+    let directory = s.root.join("saved through UI");
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(directory.join("source.txt"), "untouched").unwrap();
+    let mut client = s.attach(100, 30);
+    client.until("Projects");
+    s.ctl("project.add", &[]);
+    client.until("Save project directory");
+    client.key(KeyCode::Char('u'), KeyModifiers::CONTROL);
+    client.event(Event::Paste(
+        s.root.join("missing").to_string_lossy().into_owned(),
+    ));
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("Unable to complete action");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    s.ctl("project.add", &[]);
+    client.until("Save project directory");
+    client.key(KeyCode::Char('u'), KeyModifiers::CONTROL);
+    client.event(Event::Paste(directory.to_string_lossy().into_owned()));
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("Saved project saved through UI");
+    client.key(KeyCode::Char('p'), KeyModifiers::ALT);
+    client.until("Saved projects");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("Project: saved through UI");
+    client.key(KeyCode::End, KeyModifiers::NONE);
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("Remove saved project?");
+    client.event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 14,
+        row: 22,
+        modifiers: KeyModifiers::NONE,
+    }));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !s.ctl("project.list", &[]).as_array().unwrap().is_empty() {
+        assert!(
+            Instant::now() < deadline,
+            "project removal did not complete"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        fs::read_to_string(directory.join("source.txt")).unwrap(),
+        "untouched"
+    );
 }

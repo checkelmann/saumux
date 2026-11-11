@@ -37,6 +37,22 @@ pub struct Config {
     pub keys: BTreeMap<String, String>,
     pub menu: BTreeMap<String, Vec<Launcher>>,
     pub start: Vec<String>,
+    pub agents: Vec<crate::agents::AgentConfig>,
+    pub notifications: Notifications,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Notifications {
+    pub detect_prompts: bool,
+    pub prompt_delay_ms: u64,
+}
+impl Default for Notifications {
+    fn default() -> Self {
+        Self {
+            detect_prompts: true,
+            prompt_delay_ms: 900,
+        }
+    }
 }
 impl Config {
     pub fn path() -> PathBuf {
@@ -56,6 +72,10 @@ impl Config {
         };
         let config: Self =
             toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
+        crate::agents::validate(&config.agents)?;
+        if !(100..=10000).contains(&config.notifications.prompt_delay_ms) {
+            bail!("notifications.prompt_delay_ms must be between 100 and 10000");
+        }
         if !["mono", "color"].contains(&config.look.content.as_str()) {
             bail!("look.content must be mono or color");
         }

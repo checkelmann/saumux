@@ -293,7 +293,7 @@ pub fn server(name: String, program: Vec<String>, layout: Option<PathBuf>) -> Re
     let _guard = SocketGuard(path.clone());
     fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
     let (events, rx) = mpsc::sync_channel(256);
-    let mut app = App::new(name, Config::load()?, events.clone());
+    let mut app = App::new(name, Config::load()?, events.clone())?;
     write_theme(&app.name, app.config.look.theme)?;
     if let Some(layout) = layout {
         app.load_layout(&layout)?;
@@ -338,6 +338,7 @@ pub fn server(name: String, program: Vec<String>, layout: Option<PathBuf>) -> Re
                 }
             }
         }
+        dirty |= app.poll_agents();
         if let Some(id) = app.detach.take() {
             if let Some(client) = clients.remove(&id) {
                 let _ = client.writer.try_send(Response::Detached);
@@ -440,6 +441,7 @@ fn handle_event(
             console,
         } => {
             let (cols, rows) = valid_size(cols, rows);
+            app.rescan_agents();
             clients.insert(
                 id,
                 Client {

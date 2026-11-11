@@ -15,6 +15,12 @@ Windows is outside scope. gpm applies only to Linux virtual consoles.
 - `app.rs`: stacking/focus, geometry, workspaces, menus, outline dragging,
   selection, shelf, layouts, hit testing and composition.
 - `commands.rs`: shared command catalog, effective bindings and menu labels.
+- `agents.rs`: executable discovery, agent identity, explicit visual notices and
+  conservative quiet-screen prompt detection. Discovery never executes a CLI.
+- `projects.rs`: shared project bookmarks, canonical paths, bounded/validated
+  JSON storage, nonblocking writer lock and mode-0600 atomic saves.
+- `support.rs`: Agents/Projects menu entries, launch/attention/project dialogs
+  and control commands; returns launch/focus actions to the window manager.
 - `render.rs`: cell grid and ANSI differences, Unicode width/overlap handling,
   the Borland palette, optional monochrome content mapping and program colours.
 - `session.rs`: detached server, private Unix sockets, peer authentication,
@@ -77,6 +83,44 @@ not rewritten by the picker.
   close requests go through its unsaved-changes prompt; confirmed session shutdown
   still stops every program. No plugins, graphics protocols or network listener.
 
+## Agents, projects and attention
+
+Each agent remains a normal PTY window with optional `agents::Run` metadata.
+Launch actions use literal argument vectors and an explicit CWD. Built-in IDs are
+codex, claude, gemini, aider, opencode, goose, amp and cursor. Configured agents
+replace built-in IDs. Rescanning checks server PATH executable permissions, not
+login state, version output or provider availability. Attached clients cannot
+replace a running server's inherited PATH; restart a new session to change it.
+
+Projects are shared between sessions in the configuration directory. Mutations
+lock and reload the latest file, merge the change, then atomically rename a
+mode-0600 temporary file; the desktop never blocks waiting for a writer lock.
+Display lists refresh explicitly or when opening the project chooser. Bookmarks
+are capped at 128, agent/windows at the existing 64-window bound. Removing a
+bookmark never changes files or terminates windows. Missing directories remain
+bookmarked and launching reports an error rather than silently choosing a CWD.
+
+The server polls tagged agent windows for prompts after a configurable quiet
+period. It examines the last ten nonempty lines of the live viewport, even if the
+user is reading scrollback. Strong English prompt phrases produce a notice marked
+`possible`; ordinary inactivity does not. This is deliberately best effort,
+not a provider state protocol. Acknowledgement suppresses repeated identical
+prompt text until the prompt disappears. Disabling detection clears guessed
+notices and keeps explicit ones.
+
+OSC 9 text / OSC 777 notify and BEL parser callbacks set explicit visual notices.
+Numeric OSC 9 messages are ignored as progress. No host bell or notification OSC
+is emitted. `agent.notify` supports waiting/attention/done/working and requires a
+window ID, supplied by the CLI from `SAUMUX_WINDOW` for hooks. `SAUMUX_BIN` names
+the launching executable; `SAUMUX` chooses the session. These variables are
+inherited by child agent processes. No provider configuration is written.
+
+Notices survive focus, shelving, workspace changes and client disconnects. Actual
+forwarded key/paste/application-button input, explicit acknowledgement or a
+working notification clears them. Titles, shelf tabs and persistent badges use
+the shared theme's activity role; attention navigation crosses workspace boundaries.
+Layouts retain agent identity/project labels but create fresh transient state.
+
 ## Validation and remaining release work
 
 Automated checks exercise shell input/output, vim alternate-screen editing,
@@ -86,7 +130,11 @@ shelf activity, detach/reattach, smallest-client sizing, saving/reloading layout
 browser-to-editor opening, UTF-8 Save As/reopen, and
 unsaved editor close/cancel/save behavior, live theme changes across open
 components and clients, theme-picker mouse/keyboard operation, configuration
-reload, and detach/reattach theme persistence.
+reload, and detach/reattach theme persistence. Fake-agent integration fixtures
+exercise project launch CWDs with spaces/metacharacters, project dialogs and
+bookmark-only removal, background hook routing, prompt/OSC detection, visual-only
+alerts, cross-workspace/shelf restoration and acknowledgement. They do not start
+real coding agents or make provider API requests.
 The separate controlling-PTY test checks the real client and exact terminal
 settings restoration after detach and SIGTERM. CI covers Linux and macOS.
 

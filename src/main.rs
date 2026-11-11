@@ -1,3 +1,4 @@
+mod agents;
 mod app;
 mod browser;
 mod builtin;
@@ -8,9 +9,11 @@ mod editor;
 mod geometry;
 mod gpm;
 mod input;
+mod projects;
 mod protocol;
 mod render;
 mod session;
+mod support;
 mod theme;
 mod window;
 
@@ -66,11 +69,22 @@ fn run() -> Result<()> {
             .first()
             .context("ctl needs a command; try commands or list")?
             .clone();
-        let arguments = rest[1..]
+        let mut arguments: Vec<String> = rest[1..]
             .iter()
             .filter(|s| command != "list" || s.as_str() != "--json")
             .cloned()
             .collect();
+        if command == "project.add" && !arguments.is_empty() {
+            arguments[0] = std::path::absolute(&arguments[0])?
+                .to_string_lossy()
+                .into_owned();
+        }
+        if command == "agent.notify"
+            && !arguments.iter().any(|a| a == "--window")
+            && let Ok(window) = std::env::var("SAUMUX_WINDOW")
+        {
+            arguments.extend(["--window".into(), window]);
+        }
         let result = session::control(&name, command, arguments)?;
         if !result.is_null() {
             println!("{}", serde_json::to_string_pretty(&result)?);

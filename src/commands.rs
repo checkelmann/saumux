@@ -4,8 +4,58 @@ pub struct Command {
     pub menu: usize,
     pub shortcut: &'static str,
 }
-pub const MENUS: &[&str] = &["System", "File", "Edit", "View", "Window", "Help"];
+pub const MENUS: &[&str] = &[
+    "System", "File", "Edit", "View", "Window", "Agents", "Projects", "Help",
+];
 pub const COMMANDS: &[Command] = &[
+    Command {
+        name: "agent.start",
+        label: "Start agent…",
+        menu: 5,
+        shortcut: "",
+    },
+    Command {
+        name: "agent.rescan",
+        label: "Rescan installed agents",
+        menu: 5,
+        shortcut: "",
+    },
+    Command {
+        name: "agent.attention",
+        label: "Agent attention…",
+        menu: 5,
+        shortcut: "Alt+a",
+    },
+    Command {
+        name: "agent.ack",
+        label: "Clear active agent alert",
+        menu: 5,
+        shortcut: "",
+    },
+    Command {
+        name: "project.add",
+        label: "Add project directory…",
+        menu: 6,
+        shortcut: "",
+    },
+    Command {
+        name: "project.save_current",
+        label: "Save active directory",
+        menu: 6,
+        shortcut: "",
+    },
+    Command {
+        name: "project.open",
+        label: "Saved projects…",
+        menu: 6,
+        shortcut: "Alt+p",
+    },
+    Command {
+        name: "project.refresh",
+        label: "Refresh projects",
+        menu: 6,
+        shortcut: "",
+    },
     Command {
         name: "theme.set",
         label: "Colour theme…",
@@ -51,7 +101,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "menu.open",
         label: "Open menus",
-        menu: 5,
+        menu: 7,
         shortcut: "F10",
     },
     Command {
@@ -201,7 +251,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "help.show",
         label: "Help",
-        menu: 5,
+        menu: 7,
         shortcut: "F1",
     },
 ];
