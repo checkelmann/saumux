@@ -15,12 +15,13 @@ mod render;
 mod session;
 mod support;
 mod theme;
+mod web;
 mod window;
 
 use anyhow::{Context, Result, bail};
 use std::{io::IsTerminal, os::unix::net::UnixStream, path::PathBuf};
 
-const HELP: &str = "saumux — a retro terminal desktop\n\nUsage:\n  saumux                         Start, or attach to the only session\n  saumux new [name] [-- program [args…]]\n  saumux attach <name>\n  saumux ls\n  saumux --layout <file> [--session <name>]\n  saumux ctl [--session <name>] <command> [args…]\n\nF10 opens menus. Alt+n starts a shell. Alt+d detaches.\nConfiguration: ~/.config/saumux/config.toml\nUse `saumux ctl commands` to list commands.\n";
+const HELP: &str = "saumux — a retro terminal desktop\n\nUsage:\n  saumux                         Start, or attach to the only session\n  saumux new [name] [-- program [args…]]\n  saumux attach <name>\n  saumux ls\n  saumux web [--bind <address>] [--port <port>] [--session <name>]\n  saumux --layout <file> [--session <name>]\n  saumux ctl [--session <name>] <command> [args…]\n\nF10 opens menus. Alt+n starts a shell. Alt+d detaches.\nConfiguration: ~/.config/saumux/config.toml\nUse `saumux ctl commands` to list commands.\n";
 
 fn main() {
     if let Err(error) = run() {
@@ -56,6 +57,9 @@ fn run() -> Result<()> {
             println!("{name}");
         }
         return Ok(());
+    }
+    if args.first().is_some_and(|s| s == "web") {
+        return web::run(&args[1..]);
     }
     if args.first().is_some_and(|s| s == "ctl") {
         let mut rest = &args[1..];

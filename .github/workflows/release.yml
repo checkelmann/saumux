@@ -19,8 +19,11 @@ jobs:
   build:
     needs: validate
     uses: ./.github/workflows/build.yml
+  browser:
+    needs: validate
+    uses: ./.github/workflows/browser.yml
   publish:
-    needs: [validate, build]
+    needs: [validate, build, browser]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

@@ -1,0 +1,19 @@
+:root { color-scheme: dark; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; background: #000; color: #ccc; }
+* { box-sizing: border-box; }
+body { margin: 0; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: none; padding: 5px 9px; background: #aaa; color: #000; border-bottom: 2px solid #555; font-size: 12px; }
+strong { color: #000080; font-size: 14px; letter-spacing: .04em; }
+nav { display: flex; gap: 4px; flex-wrap: wrap; }
+button { font: inherit; color: #000; background: #ccc; border: 1px solid; border-color: #fff #555 #555 #fff; padding: 3px 8px; cursor: pointer; border-radius: 0; }
+button:hover, button:focus-visible { background: #fff; outline: 1px solid #000080; }
+button:active { border-color: #555 #fff #fff #555; }
+#status { margin-left: auto; max-width: min(40vw, 400px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#terminal { flex: 1; min-height: 0; padding: 2px; overflow: hidden; }
+.xterm { height: 100%; }
+.xterm .xterm-viewport { overflow: hidden !important; }
+dialog { width: min(90vw, 620px); color: #fff; background: #000080; border: 2px solid #ccc; font: inherit; }
+dialog::backdrop { background: #0009; }
+label { display: block; margin-bottom: 12px; }
+textarea { display: block; width: 100%; resize: vertical; background: #000; color: #fff; border: 1px solid #aaa; font: inherit; padding: 8px; }
+dialog form > div { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
+@media (max-width: 700px) { header { gap: 5px; } #status { max-width: 100%; margin-left: 0; } button { padding: 3px 5px; } }

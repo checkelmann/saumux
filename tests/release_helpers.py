@@ -25,11 +25,12 @@ class ReleaseTest(unittest.TestCase):
             archive = release.package("aarch64-apple-darwin", binary, directory / "dist")
             with tarfile.open(archive) as tar:
                 members = tar.getmembers()
-                self.assertEqual(len(members), 5)
+                self.assertEqual(len(members), 6)
                 executable = next(m for m in members if m.name.endswith("/saumux"))
                 self.assertEqual(executable.mode, 0o755)
                 self.assertEqual(tar.extractfile(executable).read(), binary.read_bytes())
                 self.assertTrue(any(m.name.endswith("/terminfo/saumux.terminfo") for m in members))
+                self.assertTrue(any(m.name.endswith("/THIRD_PARTY_NOTICES.md") for m in members))
             checksum = archive.with_name(archive.name + ".sha256").read_text().split()[0]
             self.assertEqual(checksum, hashlib.sha256(archive.read_bytes()).hexdigest())
 

@@ -39,6 +39,7 @@ def package(target, binary, output):
     archive = output / (name + ".tar.gz")
     files = [(binary, "saumux"), (ROOT / "README.md", "README.md"),
              (ROOT / "LICENSE", "LICENSE"),
+             (ROOT / "THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.md"),
              (ROOT / "docs/implementation.md", "docs/implementation.md"),
              (ROOT / "terminfo/saumux.terminfo", "terminfo/saumux.terminfo")]
     with tarfile.open(archive, "w:gz") as tar:

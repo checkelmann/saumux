@@ -1,0 +1,20 @@
+name: Browser client
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  chromium:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - run: cargo build --locked
+      - run: npm ci --prefix tests/browser --ignore-scripts
+      - run: npm exec --prefix tests/browser -- playwright install --with-deps chromium
+      - run: node tests/browser/smoke.cjs target/debug/saumux

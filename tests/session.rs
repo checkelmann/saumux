@@ -1023,3 +1023,201 @@ fn project_directory_dialog_errors_and_mouse_removal_preserve_files() {
         "untouched"
     );
 }
+
+struct WebListener {
+    child: Child,
+    address: String,
+}
+impl WebListener {
+    fn start(s: &Session) -> Self {
+        use std::io::{BufRead, BufReader};
+        let mut child = Command::new(env!("CARGO_BIN_EXE_saumux"))
+            .args([
+                "web",
+                "--session",
+                "test",
+                "--bind",
+                "127.0.0.1",
+                "--port",
+                "0",
+            ])
+            .env("XDG_RUNTIME_DIR", &s.root)
+            .env("XDG_CONFIG_HOME", s.root.join("config"))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let output = child.stdout.take().unwrap();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            for line in BufReader::new(output).lines().map_while(Result::ok) {
+                if line.starts_with("saumux web: ") {
+                    let _ = tx.send(line);
+                }
+            }
+        });
+        let line = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        let address = line
+            .split_whitespace()
+            .nth(2)
+            .unwrap()
+            .trim_end_matches('/')
+            .strip_prefix("http://")
+            .unwrap()
+            .to_string();
+        Self { child, address }
+    }
+    fn connect(
+        &self,
+    ) -> tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>> {
+        let (mut socket, _) = tungstenite::connect(format!("ws://{}/ws", self.address)).unwrap();
+        if let tungstenite::stream::MaybeTlsStream::Plain(tcp) = socket.get_mut() {
+            tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        }
+        socket
+    }
+}
+impl Drop for WebListener {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+fn browser_send(socket: &mut impl std::io::Write, path: &str, address: &str) {
+    write!(
+        socket,
+        "GET {path} HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+}
+fn web_send(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
+    value: serde_json::Value,
+) {
+    socket
+        .send(tungstenite::Message::Text(value.to_string().into()))
+        .unwrap();
+}
+fn web_until(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>,
+    parser: &mut vt100::Parser,
+    needle: &str,
+) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let tungstenite::Message::Text(text) = socket.read().unwrap() {
+            match serde_json::from_str::<Response>(&text).unwrap() {
+                Response::Render(data) => parser.process(data.as_bytes()),
+                Response::Error(error) => panic!("{error}"),
+                _ => {}
+            }
+        }
+        if parser.screen().contents().contains(needle) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "web waiting for {needle}: {}",
+            parser.screen().contents()
+        );
+    }
+}
+
+#[test]
+fn web_client_shares_desktop_input_mouse_themes_and_survives_disconnect() {
+    use serde_json::json;
+    use std::io::Read;
+    let s = Session::start(&["/bin/sh"]);
+    let web = WebListener::start(&s);
+    let pid = s.ctl("list", &[])[0]["pid"].clone();
+    // All frontend assets are local, served without credentials.
+    for path in [
+        "/",
+        "/app.js",
+        "/vendor/xterm.js",
+        "/vendor/addon-fit.js",
+        "/vendor/xterm.css",
+    ] {
+        let mut tcp = std::net::TcpStream::connect(&web.address).unwrap();
+        tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        browser_send(&mut tcp, path, &web.address);
+        let mut response = String::new();
+        tcp.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200"));
+        assert!(!response.contains("Set-Cookie:"));
+    }
+    let mut browser = web.connect();
+    web_send(&mut browser, json!({"type":"hello","cols":100,"rows":30}));
+    let mut screen = vt100::Parser::new(30.try_into().unwrap(), 100.try_into().unwrap(), 0);
+    web_until(&mut browser, &mut screen, "Projects");
+    web_send(
+        &mut browser,
+        json!({"type":"paste","text":"printf 'WEB_READY\\n'\n"}),
+    );
+    web_until(&mut browser, &mut screen, "WEB_READY");
+    let before = s.ctl("list", &[])[0]["rect"].clone();
+    let x = before["x"].as_u64().unwrap() + 10;
+    let y = before["y"].as_u64().unwrap();
+    for (kind, x, y) in [("down", x, y), ("drag", x + 3, y + 2), ("up", x + 3, y + 2)] {
+        web_send(
+            &mut browser,
+            json!({"type":"mouse","kind":kind,"button":0,"x":x,"y":y}),
+        );
+    }
+    web_send(&mut browser, json!({"type":"key","key":"t","alt":true}));
+    web_until(&mut browser, &mut screen, "Colour themes");
+    assert_eq!(
+        s.ctl("list", &[])[0]["rect"]["x"],
+        before["x"].as_u64().unwrap() + 3
+    );
+    web_send(&mut browser, json!({"type":"key","key":"Escape"}));
+    s.ctl("theme.set", &["amber"]);
+    let mut tui = s.attach(100, 30);
+    tui.until_render("shared amber", |s| {
+        s.cell(0, 0).unwrap().bgcolor() == vt100::Color::Idx(3)
+    });
+    web_send(&mut browser, json!({"type":"detach"}));
+    drop(browser);
+    let mut second = web.connect();
+    web_send(&mut second, json!({"type":"hello","cols":100,"rows":30}));
+    web_until(&mut second, &mut screen, "WEB_READY");
+    assert_eq!(s.ctl("list", &[])[0]["pid"], pid);
+    drop(second);
+    drop(web);
+    assert_eq!(s.ctl("list", &[])[0]["pid"], pid);
+}
+
+#[test]
+fn web_rejects_cross_origin_and_malformed_events_without_losing_session() {
+    use serde_json::json;
+    use tungstenite::client::IntoClientRequest;
+    let s = Session::start(&["/bin/sh"]);
+    let web = WebListener::start(&s);
+    let mut request = format!("ws://{}/ws", web.address)
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Origin", "http://unrelated.example".parse().unwrap());
+    assert!(
+        matches!(tungstenite::connect(request),Err(tungstenite::Error::Http(response)) if response.status()==403)
+    );
+    let mut browser = web.connect();
+    web_send(&mut browser, json!({"type":"hello","cols":100,"rows":30}));
+    web_send(
+        &mut browser,
+        json!({"type":"control","command":"session.end"}),
+    );
+    loop {
+        if let tungstenite::Message::Text(text) = browser.read().unwrap()
+            && matches!(
+                serde_json::from_str::<Response>(&text).unwrap(),
+                Response::Error(_)
+            )
+        {
+            break;
+        }
+    }
+    assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 1);
+}

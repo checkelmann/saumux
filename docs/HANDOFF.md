@@ -19,8 +19,10 @@ The user explicitly changed three original requirements:
 - The monochrome requirement was removed in favor of a colourful Borland/Turbo
   Vision style, subsequently extended with live selectable themes.
 
-Windows support, graphics protocols, a plugin language and direct network access
-remain outside the current scope. Remote access uses SSH. Do not confuse layout
+The user subsequently requested an opt-in browser frontend, listening by default
+on **0.0.0.0**, explicitly **without authentication for now**. This replaces the
+original SSH-only restriction. SSH/TUI access remains supported. Windows server
+support, graphics protocols and a plugin language remain outside scope. Do not confuse layout
 saving with checkpointing program state.
 
 ## Repository, release and development state
@@ -36,10 +38,10 @@ saving with checkpointing program state.
 - Cargo.toml still declares version `0.1.0` on this development snapshot. Before
   the next requested release, choose/bump its version and update Cargo.lock.
   Never move the existing v0.1.0 tag to include newer code.
-- Agent discovery, saved projects and visual agent attention are the current
-  development feature set; they are not included in v0.1.0.
-- The local `target/release/saumux` was rebuilt with live theme and agent support. Build
-  artifacts are ignored by Git and must be rebuilt in a fresh checkout.
+- Agent discovery, saved projects, visual agent attention and the browser frontend
+  are the current development feature set; they are not included in v0.1.0.
+- The local `target/release/saumux` was rebuilt with live themes, agent support
+  and the web frontend. Build artifacts are ignored by Git and must be rebuilt in a fresh checkout.
 
 The initial release workflow completed successfully:
 https://github.com/checkelmann/saumux/actions/runs/42853382887
@@ -84,6 +86,11 @@ The implementation notes map modules to responsibilities and list resource bound
   prompt detection. No sound, automatic logins, permission changes or provider
   configuration edits. Alt+p opens saved projects. See README for hook API/limits.
 
+- Web frontend: `saumux web` binds 0.0.0.0:8080, with configurable bind/port/session;
+  browser and TUI share the same compositor/session. Embedded offline assets, mouse,
+  keyboard, resize, clipboard fallback, reconnect and disconnect survival. No auth
+  or built-in TLS, as explicitly requested. One chosen session per listener.
+
 ## Important implementation contracts
 
 - `commands.rs` drives menu entries and configurable keyboard bindings. Add
@@ -93,6 +100,11 @@ The implementation notes map modules to responsibilities and list resource bound
   manager. Discovery must not execute agents. A prompt guess must stay visibly
   tentative; focus must not acknowledge it. Actual input or explicit ack does.
   `SAUMUX_WINDOW`, `SAUMUX_BIN` and `SAUMUX` route opt-in hooks to their own pane.
+- `web.rs` bridges bounded browser events to the existing Unix protocol; keep
+  desktop logic in the ordinary compositor. Do not spawn a second desktop per tab
+  or expose arbitrary socket paths. Listener/tab exit must not end the session.
+  Vendor licenses are in `web/vendor/` and `THIRD_PARTY_NOTICES.md`; release archives
+  must include the notices. Node/Playwright are test dependencies only.
 - `app.rs` owns window-manager state and composition; `render.rs` owns cells,
   widths, attributes and ANSI differences. Preserve wide-character clipping and
   whole-glyph cleanup when overlapping either half of a wide character.
@@ -154,10 +166,13 @@ prompt and OSC notices, silent rendering and cross-workspace/shelf acknowledgeme
 These tests do not validate every real agent/version or provider hook integration.
 The separate Python controlling-PTY test checks exact terminal-settings restoration.
 
-Latest agent/project validation (2026-11-11): formatting and strict Clippy passed;
-macOS passed 16 unit + 20 integration tests, Linux Docker passed 17 unit + 20
+Latest web/agent/project validation (2026-11-11): formatting and strict Clippy passed;
+macOS passed 17 unit + 22 integration tests, Linux Docker passed 18 unit + 22
 integration tests (including Linux-only gpm). Both passed the client controlling-PTY
-test. Release helper tests passed and the macOS release binary was rebuilt. The
+test. Release helper tests and the real Chromium desktop smoke test passed;
+the macOS release binary was rebuilt with embedded web assets. The Chromium test
+uses an isolated runtime and checks rendering/input, dragging, theme changes,
+HTTP clipboard fallback, dialogs, resize, reconnect/refresh and offline assets. The
 four native release targets remain covered by CI; these local results do not
 establish the status of a later CI run.
 
@@ -174,6 +189,18 @@ Also retain the inferred clock argument type for `localtime_r`: naming
 `libc::time_t` directly triggers a deprecation warning on the musl targets.
 Current stable Rust can diagnose warnings missed by an older local toolchain;
 keep CI's `-D warnings` checks.
+
+For optional real-browser validation:
+
+```sh
+npm ci --prefix tests/browser --ignore-scripts
+npm exec --prefix tests/browser -- playwright install chromium
+node tests/browser/smoke.cjs target/debug/saumux
+```
+
+Browser CI runs separately through `browser.yml`; tag publication requires both
+it and the four native builds. Use `SAUMUX_TEST_SCREENSHOT=/tmp/saumux-web.png` to
+capture the fixture's desktop. Never test against a live user's web/session ports.
 
 ## Known gaps and useful next work
 
@@ -211,10 +238,11 @@ request and verify a suspected bug before changing behavior.
 ## Release workflow
 
 - `ci.yml`: main pushes, PRs and manual check runs; calls `build.yml`.
+- `browser.yml`: isolated real Chromium client check, reused by CI/tag releases.
 - `build.yml`: native x86_64/aarch64 Linux-musl and Intel/Apple Silicon macOS,
   strict checks, tests, optimized executable, PTY lifecycle check, packaging helper
   tests, tar archives and build artifacts. Linux binaries are statically linked.
-- `release.yml`: a `v*` tag push validates against Cargo.toml, runs all four builds,
+- `release.yml`: a `v*` tag push validates against Cargo.toml, runs all four builds plus Chromium,
   verifies archive hashes, creates a draft with generated notes, uploads assets
   and publishes it. Prerelease version tags produce prereleases.
 - `scripts/release.py`: validates tag/version matching and packages the binary,

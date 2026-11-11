@@ -39,6 +39,53 @@ tic -x -o ~/.terminfo terminfo/saumux.terminfo
 Programs receive `TERM=saumux-256color` when that entry is installed, otherwise
 `TERM=screen-256color`. The latter must exist on the machine running the programs.
 
+## Browser frontend
+
+```sh
+saumux web
+```
+
+Starts the web listener at **`0.0.0.0:8080`**. On another PC, open
+`http://<saumux-computer-IP>:8080/`. There is **no authentication** in this version:
+anyone who can reach this port can control the shared desktop and its programs.
+The listener serves plain HTTP; TLS can be supplied by a reverse proxy.
+
+The browser displays the same server-composed character grid, with overlapping
+windows, mouse dragging/resizing, menus, function-key bar, themes, bundled
+browser/editor, agents, projects and attention indicators. All web assets are
+embedded in the executable; no CDN, Node installation or frontend build is needed
+to run it.
+
+```sh
+saumux web --session work                    # share work, or create it
+saumux web --bind 0.0.0.0 --port 9090
+saumux web --bind 127.0.0.1 --port 8080        # local access only
+saumux web --session logs -- tail -f /path/to/log
+saumux web --session restored --layout ./work.json
+```
+
+Without `--session`, the listener shares the only running session, starts
+`default` if none exists, or asks for a name if several exist. Existing sessions
+cannot also be given a startup program/layout. A TUI can attach simultaneously:
+`saumux attach work`. Focus and themes are shared; the smallest attached browser
+or terminal determines desktop size.
+
+The browser resizes its grid to the viewport. Use the desktop menus by mouse or
+F10; a small browser toolbar also provides default shortcuts and Reconnect.
+Some browser/OS shortcuts cannot be captured; the desktop menus remain available.
+Shift+drag selects through the browser terminal; ordinary dragging uses saumux.
+Clipboard paste uses Ctrl+V / Command+V or the toolbar's Paste button. If plain
+HTTP or browser permissions prevent clipboard access, Paste opens a text field.
+Copying inside saumux fills its internal buffer; click the browser toolbar's Copy
+button to export the latest selection to this PC. Clipboard behavior follows the
+browser's permissions. Shift+Insert still pastes the internal saumux clipboard.
+
+Closing/reloading a tab or detaching leaves its programs running. Reconnect
+attaches again. **Ctrl+C** or SIGTERM stops the foreground web listener and
+leaves the session server running. **System → End session** still ends the
+session, just as in the TUI. The listener exposes one configured session; it has
+no remote session picker. Its Unix socket stays private to the owning user.
+
 ## Using the desktop
 
 Click **System → New shell**, or press **Alt+n**, to open a window. Click a window
@@ -335,9 +382,21 @@ python3 tests/client_pty.py target/debug/saumux
 The integration tests start real PTYs and servers. Python 3 is needed for the
 input/resize fixtures; release helpers require Python 3.11 or newer. vim and htop tests run when those programs are installed.
 CI runs on both Ubuntu and macOS. All dependencies are embedded in the executable;
-no saumux daemon, emulator library or service needs to be installed separately.
+no separate saumux daemon, emulator library or service needs to be installed.
 
-MIT licensed. Rust dependencies retain their own licenses.
+Optional real-browser check (Node 22+; Chromium is installed only for testing):
+
+```sh
+npm ci --prefix tests/browser --ignore-scripts
+npm exec --prefix tests/browser -- playwright install chromium
+node tests/browser/smoke.cjs target/debug/saumux
+```
+
+CI and tag releases also run this check on Linux. The fixture starts its own
+isolated session/listener and never connects to a user's running desktop.
+
+MIT licensed. Rust dependencies retain their own licenses. Bundled browser
+licenses are recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Releases
 
@@ -346,8 +405,8 @@ macOS. Linux release executables use musl for static linking. Each archive
 contains `saumux`, documentation, the license and the optional terminfo entry.
 Downloads are accompanied by `SHA256SUMS`.
 
-v0.1.0 is already published. Live themes and agent/project support require a
-newer build from `main`; they are not in the v0.1.0 downloads.
+v0.1.0 is already published. Live themes, agent/project support and the web
+frontend require a newer build from `main`; they are not in the v0.1.0 downloads.
 
 To publish the next version, update `version` in Cargo.toml, run `cargo check` to update
 Cargo.lock, commit and push those changes, then push the matching version tag:

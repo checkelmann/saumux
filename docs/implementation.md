@@ -27,6 +27,8 @@ Windows is outside scope. gpm applies only to Linux virtual consoles.
   bounded queues and per-client rendering state.
 - `client.rs`: raw mode, alternate screen, terminal events and synchronized
   output; restores terminal state on detach, error, panic and termination signals.
+- `web.rs`, `web/`: opt-in HTTP/WebSocket client bridge and embedded xterm.js
+  frontend, using the same Unix-socket protocol and compositor as the TUI.
 - `gpm.rs`: Linux console mouse adapter using the local gpm wire protocol.
 - `protocol.rs`: versioned, length-prefixed JSON packets, bounded at 16 MiB.
 
@@ -81,7 +83,8 @@ not rewritten by the picker.
 - The original terminal-program-only scope was expanded to include the bundled
   browser and editor. They run as PTY programs from the same executable. Editor
   close requests go through its unsaved-changes prompt; confirmed session shutdown
-  still stops every program. No plugins, graphics protocols or network listener.
+  still stops every program. No plugins or graphics protocols. The later web
+  frontend explicitly adds an opt-in network listener.
 
 ## Agents, projects and attention
 
@@ -121,6 +124,47 @@ working notification clears them. Titles, shelf tabs and persistent badges use
 the shared theme's activity role; attention navigation crosses workspace boundaries.
 Layouts retain agent identity/project labels but create fresh transient state.
 
+## Browser frontend
+
+`saumux web` binds to 0.0.0.0:8080 by default, with configurable IP/port and session.
+The user explicitly requested no authentication for this iteration. The listener
+shares one existing session or starts one, independent of any terminal. It binds
+before launching programs so an occupied port does not create an unwanted session.
+Network access is now an accepted scope expansion; SSH is still supported.
+
+Axum/Tokio serve embedded static assets and upgrade `/ws`. A browser sends one
+size hello, then bounded structured keyboard/mouse/paste/resize/focus events.
+The bridge converts them to crossterm events and sends the existing length-prefixed
+Unix-socket protocol. It accepts no arbitrary control packet or alternate socket
+path from the browser. The session server still owns all windows, menus, PTYs,
+attention and differential composition. Output goes unchanged through xterm.js;
+no second desktop implementation exists. All assets are bundled for offline use.
+
+There are at most 64 web connections, a 10-second hello timeout, a 1 MiB browser
+message limit, 15-second write timeouts and bounded browser input/render queues.
+WebSocket pings run every 15 seconds; missing replies for over 45 seconds detach
+the abandoned client. Packet reads remain pinned across heartbeat sends.
+Protocol packets retain the existing 16 MiB limit. Forwarding selects entire
+input/output loops, avoiding cancellation of a partially read framed packet.
+Closing either direction closes the local connection, detaching only that client.
+Ctrl+C/SIGTERM stops the HTTP process, leaving the detached server/programs alive.
+
+The server rejects cross-origin browser upgrades while allowing direct clients
+without an Origin header; this is not authentication. No credentials, login,
+TLS, provider approval changes or automatic firewall changes are implemented.
+Anyone able to reach the listener can operate the selected session as its owner.
+A reverse proxy can supply HTTPS and must preserve the Host/Origin relationship
+and forward WebSocket upgrades for `/ws`; serve at the origin root.
+
+The xterm.js 6.0.0 distribution and Fit addon 0.11.0 are vendored with MIT notices.
+No npm step is required for Rust builds or release use. Playwright is a test-only
+pinned dependency under `tests/browser`. Release archives include third-party
+notices. Browser clipboard reads always require local user action; OSC 52 sets a
+copy buffer exported via the toolbar. Plain HTTP uses a paste dialog/copy fallback.
+Browser/OS-reserved keys and clipboard permissions remain host limitations. This
+frontend targets desktop browsers with keyboard/mouse; touch gestures/mobile
+virtual keyboards have not been validated.
+
 ## Validation and remaining release work
 
 Automated checks exercise shell input/output, vim alternate-screen editing,
@@ -136,7 +180,12 @@ bookmark-only removal, background hook routing, prompt/OSC detection, visual-onl
 alerts, cross-workspace/shelf restoration and acknowledgement. They do not start
 real coding agents or make provider API requests.
 The separate controlling-PTY test checks the real client and exact terminal
-settings restoration after detach and SIGTERM. CI covers Linux and macOS.
+settings restoration after detach and SIGTERM. CI covers Linux and macOS. Web transport integration tests check unauthenticated
+static assets, mouse/keyboard/clipboard input, shared TUI themes, reconnect and
+listener shutdown survival, cross-origin rejection and malformed input isolation.
+A real Chromium fixture checks the DOM renderer, dragging, live themes, projects/
+attention dialogs, HTTP paste fallback, viewport resize, refresh/reconnect and
+absence of external asset requests.
 
 This is not yet a claim of production-grade xterm compatibility. Before a stable
 release, exercise long working sessions with vim, htop and mc; benchmark actual
@@ -164,7 +213,7 @@ Protocol and mouse behavior were checked against upstream documentation:
 `build.yml` is shared by main/PR checks and version-tag releases. It tests and
 packages x86_64/aarch64 Linux-musl and Intel/Apple Silicon macOS executables on
 native runners. `release.yml` validates the tag against Cargo.toml, waits for all
-four builds, verifies SHA-256 digests and publishes a GitHub release. A draft is
-created first so incomplete uploads are not published. If publication fails after
+four builds and the reusable Chromium check, verifies SHA-256 digests and publishes
+a GitHub release. A draft is created first so incomplete uploads are not published. If publication fails after
 a draft is created, inspect/remove that draft before rerunning; published version
 tags are immutable by convention.
