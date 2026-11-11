@@ -1256,7 +1256,7 @@ fn modified_enter_reaches_program_distinctly_from_submit_in_tui_and_web() {
 }
 
 #[test]
-fn notes_persist_protect_unsaved_changes_and_reuse_the_open_scratchpad() {
+fn notes_inline_editor_persists_and_protects_unsaved_changes() {
     use std::os::unix::fs::PermissionsExt;
     let s = Session::start(&["/bin/sh"]);
     let mut client = s.attach(110, 32);
@@ -1264,20 +1264,18 @@ fn notes_persist_protect_unsaved_changes_and_reuse_the_open_scratchpad() {
     let id = s.ctl("notes.open", &[])["id"].as_u64().unwrap();
     client.until("NOTES · 1");
     client.key(KeyCode::Enter, KeyModifiers::NONE);
-    client.until("Ctrl+S Save");
-    let editor_id = s.ctl("list", &[])[2]["id"].as_u64().unwrap();
+    client.until("Markdown edit");
     client.event(Event::Paste("Remember the release\nGrüße 界".into()));
     client.until("Remember the release");
-    // Choosing Notes again restores the notebook and preserves the open editor.
+    // Returning to the notebook does not create a second Notes window or lose its buffer.
     s.ctl("window.workspace", &[]);
     assert_eq!(s.ctl("notes.open", &[])["id"], id);
-    s.ctl("window.focus", &[&editor_id.to_string()]);
     client.until("Grüße 界");
-    assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 3);
+    assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 2);
     s.ctl("window.close", &[]);
-    client.until("Save changes?");
+    client.until("Close Notes?");
     client.key(KeyCode::Esc, KeyModifiers::NONE);
-    client.until_screen("close cancelled", |text| !text.contains("Save changes?"));
+    client.until_screen("close cancelled", |text| !text.contains("Close Notes?"));
     client.key(KeyCode::Char('s'), KeyModifiers::CONTROL);
     client.until("Saved");
     let path = s.root.join("data/saumux/notes.txt");
@@ -1289,14 +1287,8 @@ fn notes_persist_protect_unsaved_changes_and_reuse_the_open_scratchpad() {
         fs::metadata(&path).unwrap().permissions().mode() & 0o777,
         0o600
     );
-    s.ctl("window.focus", &[&editor_id.to_string()]);
-    s.ctl("window.close", &[]);
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while s.ctl("list", &[]).as_array().unwrap().len() != 2 {
-        assert!(Instant::now() < deadline);
-        thread::sleep(Duration::from_millis(10));
-    }
-    s.ctl("window.focus", &[&id.to_string()]);
+    client.key(KeyCode::Esc, KeyModifiers::NONE);
+    client.until("Preview");
     s.ctl("window.close", &[]);
     let deadline = Instant::now() + Duration::from_secs(5);
     while s.ctl("list", &[]).as_array().unwrap().len() != 1 {
@@ -1307,21 +1299,10 @@ fn notes_persist_protect_unsaved_changes_and_reuse_the_open_scratchpad() {
     assert_ne!(id, reopened);
     client.until("NOTES · 1");
     client.key(KeyCode::Enter, KeyModifiers::NONE);
-    // Wait for the newly opened editor to finish loading the file.
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !s
-        .ctl("list", &[])
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|w| w["title"].as_str().is_some_and(|t| t.ends_with("— Editor")))
-    {
-        assert!(Instant::now() < deadline);
-        thread::sleep(Duration::from_millis(10));
-    }
+    client.until("Markdown edit");
     client.until("Remember the release");
     client.until("Grüße 界");
-    // A conflicting edit from another session/editor must not overwrite the file.
+    // A conflicting edit from another process must not overwrite the buffer.
     fs::write(&path, "external change").unwrap();
     client.text("!");
     client.key(KeyCode::Char('s'), KeyModifiers::CONTROL);

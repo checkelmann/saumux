@@ -305,7 +305,7 @@ enum Dialog {
     Close,
     Overwrite(PathBuf),
 }
-struct Editor {
+pub(crate) struct Editor {
     doc: Document,
     top: usize,
     left: usize,
@@ -339,7 +339,7 @@ const PROMPT_ACTIONS: &[(&str, &str)] = &[
     ("Ctrl+U clears the field", ""),
 ];
 impl Editor {
-    fn new(doc: Document) -> Self {
+    pub(crate) fn new(doc: Document) -> Self {
         Self {
             doc,
             top: 0,
@@ -452,6 +452,85 @@ impl Editor {
             Ok(false)
         }
     }
+    pub(crate) fn inline_dirty(&self) -> bool {
+        self.doc.dirty()
+    }
+    pub(crate) fn inline_save(&mut self) -> Result<()> {
+        let path = self.doc.path.clone().context("note has no file path")?;
+        self.doc.save(&path, false)?;
+        self.message = "Saved".into();
+        Ok(())
+    }
+    pub(crate) fn inline_paste(&mut self, text: &str) -> Result<()> {
+        self.doc.insert(text)
+    }
+    pub(crate) fn inline_key(&mut self, key: KeyEvent) -> Result<()> {
+        self.key(key)?;
+        Ok(())
+    }
+    pub(crate) fn inline_click(&mut self, x: u16, y: u16, width: u16, height: u16) {
+        self.inline_visible(width, height);
+        self.doc.state.row = (self.top + y as usize).min(self.doc.state.lines.len() - 1);
+        self.doc.state.col = builtin::index_at(
+            &self.doc.state.lines[self.doc.state.row],
+            self.left + x as usize,
+        );
+    }
+    pub(crate) fn inline_scroll(&mut self, delta: isize) {
+        self.doc.state.row = self
+            .doc
+            .state
+            .row
+            .saturating_add_signed(delta)
+            .min(self.doc.state.lines.len().saturating_sub(1));
+        self.doc.state.col = self
+            .doc
+            .state
+            .col
+            .min(self.doc.state.lines[self.doc.state.row].len());
+    }
+    pub(crate) fn draw_inline(&mut self, grid: &mut Grid, x: u16, y: u16, width: u16, height: u16) {
+        self.inline_visible(width, height);
+        for (line_y, line) in self
+            .doc
+            .state
+            .lines
+            .iter()
+            .skip(self.top)
+            .take(height as usize)
+            .enumerate()
+        {
+            builtin::line(grid, y + line_y as u16, line, self.left, width);
+        }
+        let col = builtin::column(
+            &self.doc.state.lines[self.doc.state.row],
+            self.doc.state.col,
+        )
+        .saturating_sub(self.left) as u16;
+        let row = self.doc.state.row.saturating_sub(self.top) as u16;
+        if col < width && row < height {
+            grid.cursor = Some((x + col, y + row));
+        }
+    }
+    fn inline_visible(&mut self, width: u16, height: u16) {
+        let rows = height.max(1) as usize;
+        if self.doc.state.row < self.top {
+            self.top = self.doc.state.row;
+        }
+        if self.doc.state.row >= self.top + rows {
+            self.top = self.doc.state.row + 1 - rows;
+        }
+        let col = builtin::column(
+            &self.doc.state.lines[self.doc.state.row],
+            self.doc.state.col,
+        );
+        if col < self.left {
+            self.left = col;
+        }
+        if col >= self.left + width as usize {
+            self.left = col + 1 - width as usize;
+        }
+    }
     fn save_as(&mut self) {
         let path = self
             .doc
@@ -487,7 +566,7 @@ impl Editor {
         }
         Ok(false)
     }
-    fn key(&mut self, key: KeyEvent) -> Result<bool> {
+    pub(crate) fn key(&mut self, key: KeyEvent) -> Result<bool> {
         if key.code == KeyCode::Char('q') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.dialog = None;
             self.close_after_save = false;

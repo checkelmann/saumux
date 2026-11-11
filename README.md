@@ -269,7 +269,7 @@ All data comes from the machine running saumux, including when viewing remotely.
 | App | Features | Controls inside the app |
 | --- | --- | --- |
 | System Monitor | Aligned CPU/RAM/swap readings, a scaled CPU history chart, load/uptime and compact per-core meters | Space pauses/resumes; R refreshes; arrows, PgUp/PgDn or wheel scroll cores |
-| Notes | Markdown notebook with a searchable note list, rendered reading preview, and protected bundled editor | N creates; / searches; Enter edits; Refresh updates the preview |
+| Notes | Markdown notebook with a searchable note list, rendered reading preview, and inline editing | N creates; / searches; Enter/E or click the preview to edit; Ctrl+s saves |
 | Clock | Large digital clock, weekday/date, local or UTC, 12/24-hour display | U switches local/UTC; T switches 12/24h; clickable toolbar |
 
 System Monitor samples approximately once per second; the first CPU reading
@@ -289,10 +289,13 @@ read-only app.
 Notes lists Markdown files in `$XDG_DATA_HOME/saumux/`, or
 `~/.local/share/saumux/` when the data directory is unset. It also keeps an
 existing `notes.txt` scratchpad visible. Press **N** to create a Markdown note,
-**/** to search titles and contents, and **Enter** to edit the selected note.
-The notebook renders headings, lists, task checkboxes and quotes in its preview;
-use **Refresh** after saving in the editor. Note editing uses the bundled editor's
-undo, search, explicit save and unsaved-change protection. New notes are private
+**/** to search titles and contents, and **Enter** or **E** to edit the selected
+note inline; clicking in its preview also enters edit mode. The notebook renders
+headings, lists, task checkboxes and quotes in preview mode. **Ctrl+S** saves,
+**Ctrl+Z/Y** undo and redo, and **Esc** returns to preview with a
+save/discard/cancel prompt for unsaved edits.
+Inline editing uses the bundled editor's UTF-8 handling, undo and save protection.
+New notes are private
 (0600) in a private data directory (0700). Reopening Notes in a session focuses
 the existing notebook; notes themselves are ordinary files shared between
 sessions.

@@ -99,9 +99,9 @@ The implementation notes map modules to responsibilities and list resource bound
 - Additional apps: Apps → System Monitor, Notes and Clock, also exposed through
   `monitor.open`, `notes.open`, `clock.open`. The monitor uses native sysinfo data,
   the clock offers local/UTC and 12/24h. Notes is a Markdown notebook with list,
-  content search, reading preview and new-note flow; files open in the protected
-  bundled editor. Existing `notes.txt` scratchpads remain listed. All share PTY
-  controls and live themes.
+  content search, reading preview and new-note flow; Enter/E or clicking the
+  preview edits inline through the protected editor engine. Existing `notes.txt`
+  scratchpads remain listed. All share PTY controls and live themes.
 
 Modified Enter fix: Shift+Enter used to collapse into CR, causing Claude to submit.
 The shared encoder now preserves Shift/Control+Enter as CSI-u; plain Enter and
@@ -131,11 +131,12 @@ no real agent or provider API is used. This is not full child kitty-protocol sup
   Keep presentation independent of sampling and preserve pause during resize/theme
   changes. CPU data must remain real; empty/partial history is not fabricated.
 - `apps.rs` owns monitor/clock and prepares the legacy notes scratchpad;
-  `notes.rs` owns the Markdown notebook UI. Note edits open through `editor.open`
-  and retain unsaved-close protection. New notes are private and files are shared
-  across sessions with the editor's external-change checks. Isolate XDG_DATA_HOME
-  in tests. The preview refreshes on demand and supports headings, basic lists,
-  task checkboxes and block quotes.
+  `notes.rs` owns the Markdown notebook and inline editor state. Note edits use
+  the shared editor engine and retain unsaved-change protection. New notes are private and files are shared
+  across sessions with the editor's external-change checks. Enter/E or clicking
+  the reading pane edits in place; Ctrl+S saves and Esc returns to preview with
+  save/discard/cancel protection. Isolate XDG_DATA_HOME in tests. Preview supports
+  headings, basic lists, task checkboxes and block quotes.
 - `app.rs` owns window-manager state and composition; `render.rs` owns cells,
   widths, attributes and ANSI differences. Preserve wide-character clipping and
   whole-glyph cleanup when overlapping either half of a wide character.

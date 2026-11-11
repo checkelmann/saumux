@@ -135,9 +135,10 @@ through the existing sidecar/cache, even when the monitor is paused.
 Notes is a notebook window listing Markdown files in `$XDG_DATA_HOME/saumux/`
 (or `~/.local/share/saumux/`), plus the pre-existing `notes.txt` scratchpad.
 Create makes a private `.md` file with a heading; search matches titles and
-contents. The right pane renders headings, lists, checkboxes and quotes. Enter
-opens the selected note in the bundled editor; Refresh updates its preview after
-save. Existing scratchpad data remains in place. New files use mode 0600 and
+contents. The right pane renders headings, lists, checkboxes and quotes. Enter/E
+or clicking the preview opens an inline editing state backed by the bundled
+editor engine. Esc returns to preview and prompts before losing unsaved changes.
+Existing scratchpad data remains in place. New files use mode 0600 and
 the data directory mode 0700. Editing retains UTF-8, undo/search, atomic saves,
 external-change checks and save/discard/cancel protection.
 

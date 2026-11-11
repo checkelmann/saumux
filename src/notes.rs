@@ -2,18 +2,27 @@
 //! bundled editor, while this window provides a quick notebook and preview.
 use crate::{
     builtin::{self, Surface},
+    editor::Editor,
     render::Grid,
 };
 use anyhow::{Context, Result};
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
+};
 use std::{fs, path::PathBuf};
 
 const ACTIONS: &[(&str, &str)] = &[
-    (" Open ", "open"),
+    (" Edit ", "edit"),
     (" New ", "new"),
     (" Search ", "search"),
     (" Refresh ", "refresh"),
     (" Close ", "close"),
+];
+const EDIT_ACTIONS: &[(&str, &str)] = &[
+    (" Save ", "save"),
+    (" Undo ", "undo"),
+    (" Redo ", "redo"),
+    (" Preview ", "preview"),
 ];
 
 fn root() -> Result<PathBuf> {
@@ -62,6 +71,10 @@ struct Notebook {
     preview_top: usize,
     filter: Option<String>,
     message: String,
+    editor: Option<Editor>,
+    editing: bool,
+    leave_prompt: bool,
+    close_after_leave: bool,
 }
 impl Notebook {
     fn new() -> Result<Self> {
@@ -73,7 +86,11 @@ impl Notebook {
             top: 0,
             preview_top: 0,
             filter: None,
-            message: "Enter open · N new Markdown note · / search".into(),
+            message: "Enter / E edit · N new Markdown note · / search".into(),
+            editor: None,
+            editing: false,
+            leave_prompt: false,
+            close_after_leave: false,
         };
         this.refresh()?;
         Ok(this)
@@ -98,19 +115,55 @@ impl Notebook {
     fn selected_path(&self) -> Option<&PathBuf> {
         self.notes.get(self.selected)
     }
-    fn open(&mut self) -> Result<()> {
-        let Some(path) = self.selected_path() else {
+    fn begin_edit(&mut self) -> Result<()> {
+        let Some(path) = self.selected_path().cloned() else {
             self.message = "Create a note first".into();
             return Ok(());
         };
-        let session = std::env::var("SAUMUX").context("Notes runs inside a saumux session")?;
-        crate::session::control(
-            &session,
-            "editor.open".into(),
-            vec![path.to_str().context("note path is not UTF-8")?.into()],
-        )?;
-        self.message = "Opened in editor · changes appear in preview after Refresh".into();
+        let doc = match crate::editor::Document::open(Some(&path)) {
+            Ok(doc) => doc,
+            Err(error) => {
+                self.message = format!("Cannot edit note: {error:#}");
+                return Ok(());
+            }
+        };
+        self.editor = Some(Editor::new(doc));
+        self.editing = true;
+        self.leave_prompt = false;
+        self.message = "Markdown edit · Ctrl+S saves · Ctrl+Z undo · Esc returns to preview".into();
         Ok(())
+    }
+    fn request_leave(&mut self) {
+        self.close_after_leave = false;
+        if self.editor.as_ref().is_some_and(Editor::inline_dirty) {
+            self.leave_prompt = true;
+            self.message = "Unsaved note · S save · D discard · Esc keep editing".into();
+        } else {
+            self.leave_edit();
+        }
+    }
+    fn leave_edit(&mut self) {
+        self.editor = None;
+        self.editing = false;
+        self.leave_prompt = false;
+        self.message = "Preview · Enter or E edits · click the note to edit".into();
+    }
+    fn save_inline(&mut self, leave: bool) {
+        let result = self
+            .editor
+            .as_mut()
+            .context("no note is being edited")
+            .and_then(Editor::inline_save);
+        match result {
+            Ok(()) => {
+                let _ = self.refresh();
+                self.message = "Saved".into();
+                if leave {
+                    self.leave_edit();
+                }
+            }
+            Err(error) => self.message = format!("Save failed: {error:#}"),
+        }
     }
     fn create(&mut self, name: &str) -> Result<()> {
         let clean: String = name
@@ -141,13 +194,17 @@ impl Notebook {
         self.refresh()?;
         self.selected = self.notes.iter().position(|p| p == &path).unwrap_or(0);
         self.message = "Markdown note created".into();
-        self.open()
+        self.begin_edit()
     }
     fn draw(&mut self, width: u16, height: u16) -> Grid {
         let theme = crate::theme::current();
         let mut grid = Grid::new(width, height);
         grid.fill(0, 0, width, height, " ", theme.editor.clone());
-        builtin::toolbar(&mut grid, 0, ACTIONS);
+        builtin::toolbar(
+            &mut grid,
+            0,
+            if self.editing { EDIT_ACTIONS } else { ACTIONS },
+        );
         let split = width.saturating_sub(12).clamp(1, 32);
         grid.fill(
             split,
@@ -196,23 +253,40 @@ impl Notebook {
                 style,
             );
         }
-        if let Some(path) = self.selected_path() {
-            let text =
-                fs::read_to_string(path).unwrap_or_else(|e| format!("Could not read note: {e}"));
-            markdown_preview(
-                &mut grid,
-                split + 2,
-                1,
-                width.saturating_sub(split + 3),
-                height.saturating_sub(3),
-                &text,
-                self.preview_top,
-            );
+        if let Some(path) = self.selected_path().cloned() {
+            let pane_x = split + 2;
+            let pane_width = width.saturating_sub(pane_x + 1);
+            let pane_height = height.saturating_sub(3);
+            if self.editing {
+                if let Some(editor) = &mut self.editor {
+                    grid.fill(
+                        pane_x,
+                        1,
+                        pane_width,
+                        pane_height,
+                        " ",
+                        theme.editor.clone(),
+                    );
+                    editor.draw_inline(&mut grid, pane_x, 1, pane_width, pane_height);
+                }
+            } else {
+                let text = fs::read_to_string(&path)
+                    .unwrap_or_else(|e| format!("Could not read note: {e}"));
+                markdown_preview(
+                    &mut grid,
+                    pane_x,
+                    1,
+                    pane_width,
+                    pane_height,
+                    &text,
+                    self.preview_top,
+                );
+            }
             grid.text(
-                split + 2,
+                pane_x,
                 height.saturating_sub(2),
                 &path.file_name().unwrap_or_default().to_string_lossy(),
-                width.saturating_sub(split + 3),
+                pane_width,
                 theme.monitor_muted.clone(),
             );
         } else {
@@ -322,13 +396,63 @@ pub fn run() -> Result<()> {
                     prompt = Some((kind, value));
                     continue;
                 }
-                match k.code {
-                    KeyCode::Esc | KeyCode::Char('q')
-                        if k.code == KeyCode::Esc
-                            || k.modifiers.contains(KeyModifiers::CONTROL) =>
-                    {
+                if notebook.leave_prompt {
+                    match k.code {
+                        KeyCode::Esc => {
+                            notebook.leave_prompt = false;
+                            notebook.close_after_leave = false;
+                            notebook.message = "Keep editing · Ctrl+S saves".into();
+                        }
+                        KeyCode::Char('s' | 'S') => {
+                            notebook.save_inline(true);
+                            if notebook.close_after_leave && !notebook.leave_prompt {
+                                break;
+                            }
+                        }
+                        KeyCode::Char('d' | 'D') => notebook.leave_edit(),
+                        _ => {}
+                    }
+                    if notebook.close_after_leave && !notebook.leave_prompt {
                         break;
                     }
+                    continue;
+                }
+                if notebook.editing {
+                    match k.code {
+                        KeyCode::Esc => notebook.request_leave(),
+                        KeyCode::Char('q') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                            if notebook.editor.as_ref().is_some_and(Editor::inline_dirty) {
+                                notebook.request_leave();
+                                notebook.close_after_leave = true;
+                                notebook.message =
+                                    "Close Notes? · S save · D discard · Esc cancel".into();
+                            } else {
+                                break;
+                            }
+                        }
+                        KeyCode::Char('s') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                            notebook.save_inline(false);
+                        }
+                        KeyCode::Char('f' | 'o') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                            notebook.message =
+                                "Use / in preview to search notes · each note keeps its own file"
+                                    .into();
+                        }
+                        _ => {
+                            if let Some(editor) = &mut notebook.editor
+                                && let Err(error) = editor.inline_key(k)
+                            {
+                                notebook.message = format!("Edit error: {error:#}");
+                            }
+                        }
+                    }
+                    continue;
+                }
+                match k.code {
+                    KeyCode::Esc => {
+                        break;
+                    }
+                    KeyCode::Char('q') if k.modifiers.contains(KeyModifiers::CONTROL) => break,
                     KeyCode::Up => notebook.selected = notebook.selected.saturating_sub(1),
                     KeyCode::Down => {
                         notebook.selected =
@@ -341,7 +465,7 @@ pub fn run() -> Result<()> {
                         notebook.preview_top = notebook.preview_top.saturating_add(10)
                     }
                     KeyCode::Home => notebook.preview_top = 0,
-                    KeyCode::Enter => notebook.open()?,
+                    KeyCode::Enter | KeyCode::Char('e' | 'E') => notebook.begin_edit()?,
                     KeyCode::Char('n' | 'N') => prompt = Some(("new".into(), String::new())),
                     KeyCode::Char('/') | KeyCode::Char('f')
                         if !k.modifiers.contains(KeyModifiers::CONTROL) =>
@@ -356,22 +480,80 @@ pub fn run() -> Result<()> {
                     _ => {}
                 }
             }
+            Event::Paste(text) if notebook.editing => {
+                if let Some(editor) = &mut notebook.editor
+                    && let Err(error) = editor.inline_paste(&text)
+                {
+                    notebook.message = format!("Edit error: {error:#}");
+                }
+            }
             Event::Mouse(m) => match m.kind {
                 MouseEventKind::Down(MouseButton::Left) if m.row == 0 => {
-                    if let Some(a) = builtin::action_at(m.column, ACTIONS) {
+                    let actions = if notebook.editing {
+                        EDIT_ACTIONS
+                    } else {
+                        ACTIONS
+                    };
+                    if let Some(a) = builtin::action_at(m.column, actions) {
                         match a {
-                            "open" => notebook.open()?,
+                            "edit" => notebook.begin_edit()?,
+                            "save" => notebook.save_inline(false),
+                            "undo" | "redo" => {
+                                if let Some(editor) = &mut notebook.editor {
+                                    let key = if a == "undo" { 'z' } else { 'y' };
+                                    if let Err(error) = editor.inline_key(KeyEvent::new(
+                                        KeyCode::Char(key),
+                                        KeyModifiers::CONTROL,
+                                    )) {
+                                        notebook.message = format!("Edit error: {error:#}");
+                                    }
+                                }
+                            }
+                            "preview" => notebook.request_leave(),
                             "new" => prompt = Some(("new".into(), String::new())),
                             "search" => prompt = Some(("search".into(), String::new())),
                             "refresh" => notebook.refresh()?,
-                            "close" => break,
+                            "close" => {
+                                if notebook.editing {
+                                    notebook.request_leave();
+                                } else {
+                                    break;
+                                }
+                            }
                             _ => {}
                         }
                     }
                 }
                 MouseEventKind::Down(MouseButton::Left) if m.column < 32 && m.row > 1 => {
-                    notebook.selected = (notebook.top + m.row as usize - 2)
-                        .min(notebook.notes.len().saturating_sub(1))
+                    if notebook.editing {
+                        if notebook.editor.as_ref().is_some_and(Editor::inline_dirty) {
+                            notebook.request_leave();
+                        } else {
+                            notebook.leave_edit();
+                            notebook.selected = (notebook.top + m.row as usize - 2)
+                                .min(notebook.notes.len().saturating_sub(1));
+                        }
+                    } else {
+                        notebook.selected = (notebook.top + m.row as usize - 2)
+                            .min(notebook.notes.len().saturating_sub(1));
+                    }
+                }
+                MouseEventKind::Down(MouseButton::Left) if m.column >= 32 && m.row > 0 => {
+                    let pane_x = w.saturating_sub(12).clamp(1, 32) + 2;
+                    if m.column < pane_x {
+                        continue;
+                    }
+                    if !notebook.editing {
+                        notebook.begin_edit()?;
+                    }
+                    if let Some(editor) = &mut notebook.editor {
+                        editor.inline_click(
+                            m.column.saturating_sub(pane_x),
+                            m.row - 1,
+                            w.saturating_sub(pane_x + 1),
+                            h.saturating_sub(3),
+                        );
+                    }
                 }
                 MouseEventKind::ScrollUp if m.column < 32 => {
                     notebook.selected = notebook.selected.saturating_sub(3)
@@ -379,6 +561,16 @@ pub fn run() -> Result<()> {
                 MouseEventKind::ScrollDown if m.column < 32 => {
                     notebook.selected =
                         (notebook.selected + 3).min(notebook.notes.len().saturating_sub(1))
+                }
+                MouseEventKind::ScrollUp if notebook.editing && m.column >= 32 => {
+                    if let Some(editor) = &mut notebook.editor {
+                        editor.inline_scroll(-3);
+                    }
+                }
+                MouseEventKind::ScrollDown if notebook.editing && m.column >= 32 => {
+                    if let Some(editor) = &mut notebook.editor {
+                        editor.inline_scroll(3);
+                    }
                 }
                 MouseEventKind::ScrollUp => {
                     notebook.preview_top = notebook.preview_top.saturating_sub(3)
