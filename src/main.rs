@@ -11,6 +11,7 @@ mod geometry;
 mod gpm;
 mod input;
 mod monitor_view;
+mod notes;
 mod projects;
 mod protocol;
 mod render;
@@ -40,8 +41,7 @@ fn run() -> Result<()> {
         return apps::clock();
     }
     if args.first().is_some_and(|s| s == "__notes") {
-        let path = args.get(1).context("Notes needs its storage path")?;
-        return editor::run_named(Some(std::path::Path::new(path)), "Notes");
+        return notes::run();
     }
     if args.first().is_some_and(|s| s == "__edit") {
         return editor::run(args.get(1).map(std::path::Path::new));

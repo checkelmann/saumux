@@ -110,7 +110,9 @@ async function run() {
   await hasText('Local time (host)');
   await page.keyboard.press('u'); await hasText('UTC');
   const clock = ctl('list').find(w=>w.command[1]==='__clock');
-  ctl('notes.open'); await hasText('notes.txt — Notes');
+  ctl('notes.open'); await hasText('NOTES · 1');
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.press('Enter'); await hasText('notes.txt — Editor');
   await page.locator('.xterm-helper-textarea').focus();
   await page.keyboard.type('A note from the browser');
   await page.keyboard.press('Control+s'); await hasText('Saved');

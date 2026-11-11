@@ -355,7 +355,7 @@ impl App {
                 if !self.compact() {
                     let window = self.windows.last_mut().unwrap();
                     let mut rect = window.rect;
-                    let (width, height) = match kind { "__clock" => (40, 14), "__monitor" => (80, 26), _ => (80, 24) };
+                    let (width, height) = match kind { "__clock" => (40, 14), "__monitor" => (80, 26), "__notes" => (100, 28), _ => (80, 24) };
                     rect.w = rect.w.min(width);
                     rect.h = rect.h.min(height);
                     window.resize(rect)?;

@@ -1262,15 +1262,18 @@ fn notes_persist_protect_unsaved_changes_and_reuse_the_open_scratchpad() {
     let mut client = s.attach(110, 32);
     client.until("Apps");
     let id = s.ctl("notes.open", &[])["id"].as_u64().unwrap();
-    client.until("notes.txt — Notes");
+    client.until("NOTES · 1");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
     client.until("Ctrl+S Save");
+    let editor_id = s.ctl("list", &[])[2]["id"].as_u64().unwrap();
     client.event(Event::Paste("Remember the release\nGrüße 界".into()));
     client.until("Remember the release");
-    // Choosing Notes again preserves the existing unsaved buffer across workspaces.
+    // Choosing Notes again restores the notebook and preserves the open editor.
     s.ctl("window.workspace", &[]);
     assert_eq!(s.ctl("notes.open", &[])["id"], id);
+    s.ctl("window.focus", &[&editor_id.to_string()]);
     client.until("Grüße 界");
-    assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 2);
+    assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 3);
     s.ctl("window.close", &[]);
     client.until("Save changes?");
     client.key(KeyCode::Esc, KeyModifiers::NONE);
@@ -1286,6 +1289,14 @@ fn notes_persist_protect_unsaved_changes_and_reuse_the_open_scratchpad() {
         fs::metadata(&path).unwrap().permissions().mode() & 0o777,
         0o600
     );
+    s.ctl("window.focus", &[&editor_id.to_string()]);
+    s.ctl("window.close", &[]);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while s.ctl("list", &[]).as_array().unwrap().len() != 2 {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(10));
+    }
+    s.ctl("window.focus", &[&id.to_string()]);
     s.ctl("window.close", &[]);
     let deadline = Instant::now() + Duration::from_secs(5);
     while s.ctl("list", &[]).as_array().unwrap().len() != 1 {
@@ -1294,15 +1305,16 @@ fn notes_persist_protect_unsaved_changes_and_reuse_the_open_scratchpad() {
     }
     let reopened = s.ctl("notes.open", &[])["id"].as_u64().unwrap();
     assert_ne!(id, reopened);
-    // The old screen still contains the saved text. Wait for the new process's
-    // OSC title before changing its file, so its baseline has actually loaded.
+    client.until("NOTES · 1");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    // Wait for the newly opened editor to finish loading the file.
     let deadline = Instant::now() + Duration::from_secs(5);
     while !s
         .ctl("list", &[])
         .as_array()
         .unwrap()
         .iter()
-        .any(|w| w["id"] == reopened && w["title"].as_str().is_some_and(|t| t.ends_with("— Notes")))
+        .any(|w| w["title"].as_str().is_some_and(|t| t.ends_with("— Editor")))
     {
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(10));

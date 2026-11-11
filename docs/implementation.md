@@ -10,8 +10,9 @@ Windows is outside scope. gpm applies only to Linux virtual consoles.
 
 - `browser.rs`, `editor.rs`, `builtin.rs`: bundled terminal applications with
   shared retro rendering, file navigation, text editing and save dialogs.
-- `apps.rs`: live system monitor, local/UTC digital clock and private notes
-  storage. Notes delegates to the shared editor engine with a distinct title.
+- `apps.rs`: live system monitor, local/UTC digital clock and legacy scratchpad
+  storage. `notes.rs` provides the Markdown notebook and preview; edits use the
+  existing protected editor.
 - `monitor_view.rs`: responsive monitor layout, scaled Braille CPU line chart,
   thin meters and paged core grid, rendered from a sampling-independent snapshot.
 - `window.rs`: one portable-pty per program, vt100 cell buffer, 10,000 lines of
@@ -130,15 +131,18 @@ compact text otherwise. Local/UTC and 12/24-hour choices are runtime-only. It ha
 no alarms, timers or background sounds. All app surfaces check live theme roles
 through the existing sidecar/cache, even when the monitor is paused.
 
-Notes prepares `$XDG_DATA_HOME/saumux/notes.txt` or `~/.local/share/saumux/notes.txt`
-with mode 0600, creating its data directory with 0700. Relative/empty XDG data
-paths fall back to HOME. Notes uses `editor::run_named` and therefore retains the
-same UTF-8, 2 MiB limit, undo/search, atomic writes, permission preservation,
-external-change checks and save/discard/cancel behavior. It does not autosave.
-A second launch in the same session focuses/restores the existing Notes window.
-Other sessions open the shared file independently; concurrent saves get the
-normal external-change protection. Save As switches the open document, while a
-fresh Notes window still defaults to the scratchpad path.
+Notes is a notebook window listing Markdown files in `$XDG_DATA_HOME/saumux/`
+(or `~/.local/share/saumux/`), plus the pre-existing `notes.txt` scratchpad.
+Create makes a private `.md` file with a heading; search matches titles and
+contents. The right pane renders headings, lists, checkboxes and quotes. Enter
+opens the selected note in the bundled editor; Refresh updates its preview after
+save. Existing scratchpad data remains in place. New files use mode 0600 and
+the data directory mode 0700. Editing retains UTF-8, undo/search, atomic saves,
+external-change checks and save/discard/cancel protection.
+
+The notebook is a lightweight first version: Markdown is plain text in the
+editor, with a rendered reading preview in the notebook. It does not yet provide
+folders, backlinks, tags, attachments or automatic preview synchronization.
 
 `Window::is_builtin` validates both executable identity and the internal entry
 point. `is_editor` covers both `__edit` and `__notes`; keep this contract so desktop

@@ -1,6 +1,6 @@
 # Agent handoff
 
-Last verified: **2026-11-11**. This file is the continuation entry point, not a
+Last updated: **2026-11-11**. This file is the continuation entry point, not a
 verbatim conversation transcript. Read it together with the README and implementation
 notes; inspect the current source and Git history before making changes.
 
@@ -98,8 +98,10 @@ The implementation notes map modules to responsibilities and list resource bound
 
 - Additional apps: Apps → System Monitor, Notes and Clock, also exposed through
   `monitor.open`, `notes.open`, `clock.open`. The monitor uses native sysinfo data,
-  the clock offers local/UTC and 12/24h, and Notes is a persistent editor-backed
-  scratchpad in the XDG data directory. All share PTY controls and live themes.
+  the clock offers local/UTC and 12/24h. Notes is a Markdown notebook with list,
+  content search, reading preview and new-note flow; files open in the protected
+  bundled editor. Existing `notes.txt` scratchpads remain listed. All share PTY
+  controls and live themes.
 
 Modified Enter fix: Shift+Enter used to collapse into CR, causing Claude to submit.
 The shared encoder now preserves Shift/Control+Enter as CSI-u; plain Enter and
@@ -128,10 +130,12 @@ no real agent or provider API is used. This is not full child kitty-protocol sup
   paged multi-column core grid. Its axes count samples, including manual refresh.
   Keep presentation independent of sampling and preserve pause during resize/theme
   changes. CPU data must remain real; empty/partial history is not fabricated.
-- `apps.rs` owns monitor/clock and notes storage. Notes uses `__notes` and the
-  editor engine; `Window::is_editor` must recognize it for unsaved-close protection.
-  New notes files are private, saves are explicit, and the same file is shared
-  across sessions with external-change checks. Isolate XDG_DATA_HOME in tests.
+- `apps.rs` owns monitor/clock and prepares the legacy notes scratchpad;
+  `notes.rs` owns the Markdown notebook UI. Note edits open through `editor.open`
+  and retain unsaved-close protection. New notes are private and files are shared
+  across sessions with the editor's external-change checks. Isolate XDG_DATA_HOME
+  in tests. The preview refreshes on demand and supports headings, basic lists,
+  task checkboxes and block quotes.
 - `app.rs` owns window-manager state and composition; `render.rs` owns cells,
   widths, attributes and ANSI differences. Preserve wide-character clipping and
   whole-glyph cleanup when overlapping either half of a wide character.

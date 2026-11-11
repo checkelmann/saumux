@@ -269,7 +269,7 @@ All data comes from the machine running saumux, including when viewing remotely.
 | App | Features | Controls inside the app |
 | --- | --- | --- |
 | System Monitor | Aligned CPU/RAM/swap readings, a scaled CPU history chart, load/uptime and compact per-core meters | Space pauses/resumes; R refreshes; arrows, PgUp/PgDn or wheel scroll cores |
-| Notes | A persistent UTF-8 scratchpad, using the bundled editor's save, undo, search and close protection | Ctrl+s saves; Ctrl+q asks before closing unsaved edits |
+| Notes | Markdown notebook with a searchable note list, rendered reading preview, and protected bundled editor | N creates; / searches; Enter edits; Refresh updates the preview |
 | Clock | Large digital clock, weekday/date, local or UTC, 12/24-hour display | U switches local/UTC; T switches 12/24h; clickable toolbar |
 
 System Monitor samples approximately once per second; the first CPU reading
@@ -286,15 +286,16 @@ text in small windows. Clock display options and monitor pause/history belong
 to the running app; reopening starts with defaults. Ctrl+q or Esc closes either
 read-only app.
 
-Notes saves to `$XDG_DATA_HOME/saumux/notes.txt`, or
-`~/.local/share/saumux/notes.txt` when the data directory is unset. It is shared
-between sessions and is created with private permissions (0600). Notes is saved
-explicitly with Ctrl+s or its Save button; it does **not** autosave. Opening Notes
-again in the same session restores/focuses its existing window, including unsaved
-edits. Closing asks before discarding edits. Concurrent changes to the file are
-protected by the editor's external-change check. Save As follows normal editor
-behavior and switches that window to the chosen file; reopening a closed Notes
-window uses the default scratchpad again.
+Notes lists Markdown files in `$XDG_DATA_HOME/saumux/`, or
+`~/.local/share/saumux/` when the data directory is unset. It also keeps an
+existing `notes.txt` scratchpad visible. Press **N** to create a Markdown note,
+**/** to search titles and contents, and **Enter** to edit the selected note.
+The notebook renders headings, lists, task checkboxes and quotes in its preview;
+use **Refresh** after saving in the editor. Note editing uses the bundled editor's
+undo, search, explicit save and unsaved-change protection. New notes are private
+(0600) in a private data directory (0700). Reopening Notes in a session focuses
+the existing notebook; notes themselves are ordinary files shared between
+sessions.
 
 ```sh
 saumux ctl monitor.open
