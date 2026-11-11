@@ -190,6 +190,10 @@ Also retain the inferred clock argument type for `localtime_r`: naming
 Current stable Rust can diagnose warnings missed by an older local toolchain;
 keep CI's `-D warnings` checks.
 
+The agent-feature CI run for `6c440a0` failed on Rust 1.99 Clippy's
+`unnecessary_sort_by` lint. Agent discovery now uses `sort_by_key`; keep this
+compatible form even if the older local toolchain accepts the longer comparator.
+
 For optional real-browser validation:
 
 ```sh

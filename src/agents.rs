@@ -95,7 +95,7 @@ fn discover_in(paths: &[PathBuf], configs: &[AgentConfig]) -> Vec<Agent> {
             });
         }
     }
-    result.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    result.sort_by_key(|a| a.name.to_lowercase());
     result
 }
 fn executable(name: &str, paths: &[PathBuf]) -> Option<PathBuf> {
