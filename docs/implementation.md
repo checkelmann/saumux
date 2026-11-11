@@ -86,6 +86,22 @@ not rewritten by the picker.
   still stops every program. No plugins or graphics protocols. The later web
   frontend explicitly adds an opt-in network listener.
 
+## Modified Enter keys
+
+The shared input encoder keeps plain Enter as CR and legacy Alt+Enter as ESC CR,
+but encodes Shift/Control-modified Enter using CSI-u (`CSI 13;<modifier>u`). This
+prevents Shift+Enter from silently submitting Claude prompts in both browser and
+TUI clients. Ctrl+J remains LF. This does not implement or advertise the full
+kitty keyboard protocol to programs; it preserves modified Enter input only.
+
+The TUI pushes the host's DISAMBIGUATE_ESCAPE_CODES keyboard enhancement flag and
+pops it during restoration. A process-wide atomic guard prevents the panic hook
+and terminal guard from popping the host's keyboard stack twice. Unsupported
+hosts may still send Shift+Enter identically to Enter; the server cannot recover
+that distinction. Claude's Ctrl+J newline is the portable fallback. Browser DOM
+input supplies Shift directly. No Claude settings or host terminal config files
+are edited. Tests record exact PTY bytes rather than launching a real provider.
+
 ## Agents, projects and attention
 
 Each agent remains a normal PTY window with optional `agents::Run` metadata.

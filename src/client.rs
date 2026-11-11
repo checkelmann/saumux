@@ -4,7 +4,8 @@ use crossterm::{
     cursor::{Hide, Show},
     event::{
         self, DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
-        EnableFocusChange, EnableMouseCapture,
+        EnableFocusChange, EnableMouseCapture, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute,
     terminal::{
@@ -21,6 +22,9 @@ use std::{
 };
 
 struct TerminalGuard;
+// Restoration also runs in the panic hook. Pop the host's keyboard stack only
+// once even when both that hook and TerminalGuard::drop execute.
+static KEYBOARD_PUSHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 impl TerminalGuard {
     fn enter() -> Result<Self> {
         terminal::enable_raw_mode()?;
@@ -35,9 +39,17 @@ impl TerminalGuard {
             EnableBracketedPaste,
             EnableFocusChange
         )?;
+        KEYBOARD_PUSHED.store(true, std::sync::atomic::Ordering::Relaxed);
+        execute!(
+            io::stdout(),
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )?;
         Ok(guard)
     }
     fn restore() {
+        if KEYBOARD_PUSHED.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
+        }
         let _ = io::stdout().write_all(b"\x1b[?2026l\x1b[0m");
         let _ = execute!(
             io::stdout(),

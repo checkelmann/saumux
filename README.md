@@ -174,6 +174,14 @@ agent permissions. Start an agent from its menu entry in the active window's
 working directory; its normal authentication and approval flow still applies.
 Agents run in regular PTY windows and survive detach just like shells.
 
+For multiline Claude prompts, **Shift+Enter** is forwarded distinctly from Enter;
+plain Enter submits. The browser preserves the modifier directly. The TUI asks
+supporting host terminals for disambiguated keyboard events. If your host sends
+Shift+Enter as an ordinary Enter, use **Ctrl+J** for a newline instead. Claude also
+supports a backslash followed by Enter. See [Claude's terminal guide](https://code.claude.com/docs/en/terminal-config).
+An already-running server needs a new session to load an updated input encoder;
+rebuilding alone does not replace its code. Keep existing sessions running.
+
 Use **Projects → Add project directory…** to bookmark a directory, or **Save
 active directory** to bookmark the active window's working directory. **Alt+p**
 opens saved projects; choosing one offers installed agents, a shell, the bundled

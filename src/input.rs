@@ -46,6 +46,11 @@ pub fn encode_key(key: KeyEvent, application_cursor: bool) -> Vec<u8> {
             }
         }
         KeyCode::Enter => {
+            // A carriage return discards Shift/Control and can submit an agent
+            // prompt. CSI-u preserves these keys; retain legacy Alt+Enter.
+            if shift || ctrl {
+                return format!("\x1b[13;{modifier}u").into_bytes();
+            }
             if alt {
                 out.push(27);
             }
@@ -189,6 +194,29 @@ pub fn encode_mouse(event: MouseEvent, x: u16, y: u16, screen: &vt100::Screen) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn enter_preserves_newline_modifiers_without_changing_submit_or_alt_enter() {
+        for (modifiers, expected) in [
+            (KeyModifiers::NONE, "\r"),
+            (KeyModifiers::SHIFT, "\x1b[13;2u"),
+            (KeyModifiers::CONTROL, "\x1b[13;5u"),
+            (KeyModifiers::CONTROL | KeyModifiers::SHIFT, "\x1b[13;6u"),
+            (KeyModifiers::ALT, "\x1b\r"),
+            (KeyModifiers::ALT | KeyModifiers::SHIFT, "\x1b[13;4u"),
+        ] {
+            assert_eq!(
+                encode_key(KeyEvent::new(KeyCode::Enter, modifiers), false),
+                expected.as_bytes()
+            );
+        }
+        assert_eq!(
+            encode_key(
+                KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL),
+                false
+            ),
+            b"\n"
+        );
+    }
     #[test]
     fn application_keys_and_modifiers() {
         assert_eq!(

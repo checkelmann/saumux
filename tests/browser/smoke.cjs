@@ -90,6 +90,15 @@ async function run() {
   // A browser refresh and closing the listener do not end the session.
   await page.reload(); await hasText('BROWSER_READY');
   assert.equal(ctl('list')[0].pid,original.pid);
+  const recorder = "import os,tty; tty.setraw(0); print('KEY_RECORDER_READY',flush=True)\nwhile True:\n b=os.read(0,1); print('\\rBYTE_'+b.hex(),flush=True)";
+  ctl('window.new','--','python3','-u','-c',recorder);
+  await hasText('KEY_RECORDER_READY');
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.press('Shift+Enter');
+  await hasText('BYTE_75');
+  assert.ok(!(await page.locator('.xterm-rows').textContent()).includes('BYTE_0d'), 'Shift+Enter became submit');
+  await page.keyboard.press('Control+j'); await hasText('BYTE_0a');
+  await page.keyboard.press('Enter'); await hasText('BYTE_0d');
   if (process.env.SAUMUX_TEST_SCREENSHOT) await page.screenshot({path:process.env.SAUMUX_TEST_SCREENSHOT});
   assert.deepEqual(failures, []);
   assert.deepEqual(external, []);

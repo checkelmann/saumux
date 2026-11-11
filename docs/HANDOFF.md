@@ -91,6 +91,14 @@ The implementation notes map modules to responsibilities and list resource bound
   keyboard, resize, clipboard fallback, reconnect and disconnect survival. No auth
   or built-in TLS, as explicitly requested. One chosen session per listener.
 
+Modified Enter fix: Shift+Enter used to collapse into CR, causing Claude to submit.
+The shared encoder now preserves Shift/Control+Enter as CSI-u; plain Enter and
+legacy Alt+Enter retain their behavior. The TUI requests disambiguated host keys
+and restores that keyboard stack exactly once, including panic/signal paths.
+Ctrl+J remains the fallback on hosts unable to distinguish Shift+Enter. Regression
+checks record actual PTY bytes through TUI, WebSocket and real Chromium paths;
+no real agent or provider API is used. This is not full child kitty-protocol support.
+
 ## Important implementation contracts
 
 - `commands.rs` drives menu entries and configurable keyboard bindings. Add
@@ -167,12 +175,14 @@ These tests do not validate every real agent/version or provider hook integratio
 The separate Python controlling-PTY test checks exact terminal-settings restoration.
 
 Latest web/agent/project validation (2026-11-11): formatting and strict Clippy passed;
-macOS passed 17 unit + 22 integration tests, Linux Docker passed 18 unit + 22
+macOS passed 18 unit + 23 integration tests, Linux Docker passed 19 unit + 23
 integration tests (including Linux-only gpm). Both passed the client controlling-PTY
 test. Release helper tests and the real Chromium desktop smoke test passed;
 the macOS release binary was rebuilt with embedded web assets. The Chromium test
 uses an isolated runtime and checks rendering/input, dragging, theme changes,
-HTTP clipboard fallback, dialogs, resize, reconnect/refresh and offline assets. The
+HTTP clipboard fallback, dialogs, resize, reconnect/refresh, offline assets and
+modified Enter input. The controlling-PTY test also checks host enhancement push/pop
+and exact forwarded Shift+Enter bytes. The
 four native release targets remain covered by CI; these local results do not
 establish the status of a later CI run.
 

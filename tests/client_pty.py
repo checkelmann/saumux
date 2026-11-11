@@ -55,23 +55,44 @@ class ClientTerminalTest(unittest.TestCase):
                 return data
             def wait_client(process, master):
                 deadline = time.monotonic() + 5
-                while process.poll() is None:
-                    self.assertLess(time.monotonic(), deadline, "client did not exit")
+                output = bytearray()
+                while process.poll() is None or select.select([master], [], [], 0)[0]:
+                    self.assertLess(time.monotonic(), deadline, f"client did not exit: {process.poll()}, {output[-600:]!r}")
                     if select.select([master], [], [], .05)[0]:
                         try:
-                            os.read(master, 65536)
+                            chunk = os.read(master, 65536)
+                            if not chunk:
+                                break
+                            output.extend(chunk)
                         except OSError:
                             break
                 process.wait(timeout=2)
+                return bytes(output)
             process = None
             try:
                 process, master, slave, original = launch("new", "ptytest", "--", "/bin/sh")
-                read_until(master, b"System")
+                startup = read_until(master, b"System")
+                self.assertIn(b"\x1b[>1u", startup)
                 self.assertFalse(termios.tcgetattr(slave)[3] & termios.ICANON)
                 os.write(master, b"printf 'CLIENT_PTY_OK\\n'\r")
                 read_until(master, b"CLIENT_PTY_OK")
+                record = Path(directory) / "recorded-key"
+                recorder = "import os,sys,tty,time; from pathlib import Path; tty.setraw(0); p=Path(sys.argv[1]); p.with_suffix('.ready').write_text('ready'); data=b''\nwhile len(data)<7: data+=os.read(0,7-len(data))\np.with_suffix('.hex').write_text(data.hex()); time.sleep(60)"
+                control("window.new", "--", "python3", "-u", "-c", recorder, str(record))
+                def await_file(path):
+                    deadline = time.monotonic() + 5
+                    while not path.exists() or path.stat().st_size == 0:
+                        self.assertLess(time.monotonic(), deadline, f"missing {path}")
+                        if select.select([master], [], [], .05)[0]:
+                            os.read(master, 65536)
+                    return path.read_text()
+                await_file(record.with_suffix('.ready'))
+                os.write(master, b"\x1b[13;2u")
+                self.assertEqual(await_file(record.with_suffix('.hex')), "1b5b31333b3275")
+                control("window.close")
                 os.write(master, b"\x1bd")
-                wait_client(process, master)
+                restored = wait_client(process, master)
+                self.assertEqual(restored.count(b"\x1b[<1u"), 1)
                 self.assertEqual(process.returncode, 0)
                 self.assertEqual(termios.tcgetattr(master), original)
                 self.assertEqual(len(json.loads(control("list"))), 1)
@@ -79,7 +100,8 @@ class ClientTerminalTest(unittest.TestCase):
                 process, master, slave, original = launch("attach", "ptytest")
                 read_until(master, b"CLIENT_PTY_OK")
                 process.send_signal(signal.SIGTERM)
-                wait_client(process, master)
+                restored = wait_client(process, master)
+                self.assertEqual(restored.count(b"\x1b[<1u"), 1)
                 self.assertEqual(process.returncode, 0)
                 self.assertEqual(termios.tcgetattr(master), original)
                 self.assertEqual(len(json.loads(control("list"))), 1)

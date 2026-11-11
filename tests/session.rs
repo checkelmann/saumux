@@ -1221,3 +1221,35 @@ fn web_rejects_cross_origin_and_malformed_events_without_losing_session() {
     }
     assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 1);
 }
+
+#[test]
+fn modified_enter_reaches_program_distinctly_from_submit_in_tui_and_web() {
+    use serde_json::json;
+    // Byte recorder, not a real agent: prove a newline gesture never arrives as CR.
+    let script = "import os,tty; tty.setraw(0); print('KEY_RECORDER_READY',flush=True)\nwhile True:\n b=os.read(0,1); print('\\rBYTE_'+b.hex(),flush=True)";
+    let s = Session::start(&["python3", "-u", "-c", script]);
+    let mut client = s.attach(100, 30);
+    client.until("KEY_RECORDER_READY");
+    client.key(KeyCode::Enter, KeyModifiers::SHIFT);
+    client.until("BYTE_75"); // final 'u' in CSI 13;2u
+    assert!(!client.screen.screen().contents().contains("BYTE_0d"));
+    client.key(KeyCode::Char('j'), KeyModifiers::CONTROL);
+    client.until("BYTE_0a");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("BYTE_0d");
+    // Use a fresh recorder so no earlier CR can conceal a web regression.
+    s.ctl("window.new", &["--", "python3", "-u", "-c", script]);
+    let web = WebListener::start(&s);
+    let mut browser = web.connect();
+    web_send(&mut browser, json!({"type":"hello","cols":100,"rows":30}));
+    let mut screen = vt100::Parser::new(30.try_into().unwrap(), 100.try_into().unwrap(), 0);
+    web_until(&mut browser, &mut screen, "KEY_RECORDER_READY");
+    web_send(
+        &mut browser,
+        json!({"type":"key","key":"Enter","shift":true}),
+    );
+    web_until(&mut browser, &mut screen, "BYTE_75");
+    assert!(!screen.screen().contents().contains("BYTE_0d"));
+    web_send(&mut browser, json!({"type":"key","key":"Enter"}));
+    web_until(&mut browser, &mut screen, "BYTE_0d");
+}
