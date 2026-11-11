@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const binary = path.resolve(process.argv[2] || 'target/debug/saumux');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sx-web-'));
-const env = { ...process.env, XDG_RUNTIME_DIR: root, XDG_CONFIG_HOME: path.join(root,'config'), SHELL: '/bin/sh' };
+const env = { ...process.env, XDG_RUNTIME_DIR: root, XDG_CONFIG_HOME: path.join(root,'config'), XDG_DATA_HOME: path.join(root,'data'), SHELL: '/bin/sh' };
 // Never inherit a user's active session selection into fixtures.
 delete env.SAUMUX; delete env.SAUMUX_WINDOW;
 const ctl = (...args) => JSON.parse(execFileSync(binary, ['ctl','--session','browser-test',...args], { env, encoding:'utf8' }) || 'null');
@@ -99,10 +99,37 @@ async function run() {
   assert.ok(!(await page.locator('.xterm-rows').textContent()).includes('BYTE_0d'), 'Shift+Enter became submit');
   await page.keyboard.press('Control+j'); await hasText('BYTE_0a');
   await page.keyboard.press('Enter'); await hasText('BYTE_0d');
+  ctl('window.close'); // close the disposable byte recorder
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.press('F10');
+  for (let i=0;i<7;i++) await page.keyboard.press('ArrowRight');
+  await hasText('System Monitor');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await hasText('Local time (host)');
+  await page.keyboard.press('u'); await hasText('UTC');
+  const clock = ctl('list').find(w=>w.command[1]==='__clock');
+  ctl('notes.open'); await hasText('notes.txt — Notes');
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.type('A note from the browser');
+  await page.keyboard.press('Control+s'); await hasText('Saved');
+  assert.equal(fs.readFileSync(path.join(root,'data/saumux/notes.txt'),'utf8'),'A note from the browser');
+  assert.equal(fs.statSync(path.join(root,'data/saumux/notes.txt')).mode & 0o777,0o600);
+  ctl('monitor.open'); await hasText('CPU history');
+  await page.waitForFunction(() => /sample [1-9][0-9]*/.test(document.querySelector('.xterm-rows')?.textContent));
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.press('Space'); await hasText('Paused');
+  ctl('theme.set','phosphor');
+  assert.equal(ctl('list').find(w=>w.id===clock.id).pid,clock.pid);
+  await page.waitForFunction(() => [...document.querySelectorAll('.xterm-rows span')].some(span=>span.textContent.includes('System Monitor ·') && getComputedStyle(span).color==='rgb(85, 255, 85)'));
+  ctl('layout.tile');
+  const tiledMonitor=ctl('list').find(w=>w.command[1]==='__monitor').rect;
+  await page.waitForFunction(rect => [...document.querySelectorAll('.xterm-rows > div')][rect.y]?.textContent.slice(rect.x,rect.x+rect.w).includes('System Monitor'), tiledMonitor);
   if (process.env.SAUMUX_TEST_SCREENSHOT) await page.screenshot({path:process.env.SAUMUX_TEST_SCREENSHOT});
   assert.deepEqual(failures, []);
   assert.deepEqual(external, []);
-  console.log('Browser desktop: keyboard, mouse drag, themes, projects/attention, resize, reconnect and offline assets passed.');
+  console.log('Browser desktop: keyboard, mouse drag, themes, projects/attention, resize, reconnect, offline assets, monitor, notes and clock passed.');
 }
 run().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {
   if (browser) await browser.close();

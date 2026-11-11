@@ -49,6 +49,7 @@ impl Session {
             .args(args)
             .env("XDG_RUNTIME_DIR", &root)
             .env("XDG_CONFIG_HOME", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data"))
             .env("SHELL", "/bin/sh")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -1252,4 +1253,176 @@ fn modified_enter_reaches_program_distinctly_from_submit_in_tui_and_web() {
     assert!(!screen.screen().contents().contains("BYTE_0d"));
     web_send(&mut browser, json!({"type":"key","key":"Enter"}));
     web_until(&mut browser, &mut screen, "BYTE_0d");
+}
+
+#[test]
+fn notes_persist_protect_unsaved_changes_and_reuse_the_open_scratchpad() {
+    use std::os::unix::fs::PermissionsExt;
+    let s = Session::start(&["/bin/sh"]);
+    let mut client = s.attach(110, 32);
+    client.until("Apps");
+    let id = s.ctl("notes.open", &[])["id"].as_u64().unwrap();
+    client.until("notes.txt — Notes");
+    client.until("Ctrl+S Save");
+    client.event(Event::Paste("Remember the release\nGrüße 界".into()));
+    client.until("Remember the release");
+    // Choosing Notes again preserves the existing unsaved buffer across workspaces.
+    s.ctl("window.workspace", &[]);
+    assert_eq!(s.ctl("notes.open", &[])["id"], id);
+    client.until("Grüße 界");
+    assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 2);
+    s.ctl("window.close", &[]);
+    client.until("Save changes?");
+    client.key(KeyCode::Esc, KeyModifiers::NONE);
+    client.until_screen("close cancelled", |text| !text.contains("Save changes?"));
+    client.key(KeyCode::Char('s'), KeyModifiers::CONTROL);
+    client.until("Saved");
+    let path = s.root.join("data/saumux/notes.txt");
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        "Remember the release\nGrüße 界"
+    );
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    s.ctl("window.close", &[]);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while s.ctl("list", &[]).as_array().unwrap().len() != 1 {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(10));
+    }
+    let reopened = s.ctl("notes.open", &[])["id"].as_u64().unwrap();
+    assert_ne!(id, reopened);
+    // The old screen still contains the saved text. Wait for the new process's
+    // OSC title before changing its file, so its baseline has actually loaded.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !s
+        .ctl("list", &[])
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|w| w["id"] == reopened && w["title"].as_str().is_some_and(|t| t.ends_with("— Notes")))
+    {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(10));
+    }
+    client.until("Remember the release");
+    client.until("Grüße 界");
+    // A conflicting edit from another session/editor must not overwrite the file.
+    fs::write(&path, "external change").unwrap();
+    client.text("!");
+    client.key(KeyCode::Char('s'), KeyModifiers::CONTROL);
+    client.until("file changed on disk");
+    assert_eq!(fs::read_to_string(&path).unwrap(), "external change");
+}
+
+#[test]
+fn apps_menu_monitor_clock_pause_controls_themes_and_small_windows() {
+    let s = Session::start(&["/bin/sh"]);
+    let mut client = s.attach(110, 32);
+    client.until("Apps");
+    // Apps follows Projects; preserve the established indexes of other menus.
+    client.event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 54,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    client.until("System Monitor");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("CPU history");
+    client.until_screen("a live CPU sample", |text| {
+        text.split("sample ")
+            .nth(1)
+            .and_then(|s| s.split_whitespace().next())
+            .and_then(|s| s.parse::<u64>().ok())
+            .is_some_and(|n| n > 0)
+    });
+    let windows = s.ctl("list", &[]);
+    let monitor = windows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["command"][1] == "__monitor")
+        .unwrap();
+    let monitor_id = monitor["id"].to_string();
+    let monitor_pid = monitor["pid"].clone();
+    client.key(KeyCode::Char(' '), KeyModifiers::NONE);
+    client.until("Paused");
+    // Refresh/resume is also available through the app's own mouse toolbar.
+    let r = monitor["rect"].clone();
+    client.event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: r["x"].as_u64().unwrap() as u16 + 3,
+        row: r["y"].as_u64().unwrap() as u16 + 1,
+        modifiers: KeyModifiers::NONE,
+    }));
+    client.until("Live · 1s");
+    let clock_id = s.ctl("clock.open", &[])["id"].to_string();
+    let clock_rect = s
+        .ctl("list", &[])
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["id"].as_u64() == clock_id.parse().ok())
+        .unwrap()["rect"]
+        .clone();
+    client.until("Local time (host)");
+    client.key(KeyCode::Char('u'), KeyModifiers::NONE);
+    client.until("UTC");
+    client.key(KeyCode::Char('t'), KeyModifiers::NONE);
+    client.until_screen("12-hour clock", |text| {
+        text.contains("UTC AM") || text.contains("UTC PM")
+    });
+    s.ctl("theme.set", &["phosphor"]);
+    client.until_render("clock content follows live theme", |screen| {
+        screen
+            .cell(
+                clock_rect["y"].as_u64().unwrap() as u16 + 1,
+                clock_rect["x"].as_u64().unwrap() as u16 + 2,
+            )
+            .unwrap()
+            .bgcolor()
+            == vt100::Color::Idx(2)
+    });
+    // Closing a read-only app leaves the shell and other widget running.
+    client.key(KeyCode::Char('q'), KeyModifiers::CONTROL);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while s
+        .ctl("list", &[])
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|w| w["id"].as_u64() == clock_id.parse().ok())
+    {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(10));
+    }
+    s.ctl("window.focus", &[&monitor_id]);
+    client.until_render("monitor content follows live theme", |screen| {
+        screen
+            .cell(
+                r["y"].as_u64().unwrap() as u16 + 2,
+                r["x"].as_u64().unwrap() as u16 + 2,
+            )
+            .unwrap()
+            .fgcolor()
+            == vt100::Color::Idx(10)
+    });
+    let windows = s.ctl("list", &[]);
+    assert_eq!(
+        windows
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["id"].as_u64() == monitor_id.parse().ok())
+            .unwrap()["pid"],
+        monitor_pid
+    );
+    client.event(Event::Resize(1, 1));
+    client.drain();
+    client.event(Event::Resize(110, 32));
+    client.until("CPU history");
+    assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 2);
 }

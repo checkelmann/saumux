@@ -178,9 +178,7 @@ impl App {
         });
         let mut window = Window::spawn(id, rect, command, cwd, &self.name, self.events.clone())?;
         window.workspace = self.workspace;
-        window.color = self.config.look.content == "color"
-            || window.is_editor()
-            || window.command.get(1).is_some_and(|s| s == "__files");
+        window.color = self.config.look.content == "color" || window.is_builtin();
         if self.compact() {
             self.compact_restore.insert(id, rect);
             window.resize(Rect::desktop(self.cols, self.rows))?;
@@ -345,6 +343,25 @@ impl App {
                 self.apply_theme(ids[(index+1)%ids.len()])?;
             }
             "theme.list"=>return Ok(json!(crate::theme::ThemeId::ALL.map(|id|json!({"id":id.id(),"label":id.label(),"description":id.description(),"active":id==self.config.look.theme})))),
+            "monitor.open" | "clock.open" | "notes.open" => {
+                let kind = match name { "monitor.open" => "__monitor", "clock.open" => "__clock", _ => "__notes" };
+                if kind == "__notes"
+                    && let Some(id) = self.windows.iter().find(|w| w.is_builtin() && w.command.get(1).is_some_and(|s| s == kind)).map(|w| w.id) {
+                    self.focus(id);
+                    return Ok(json!({"id":id}));
+                }
+                let paths = if kind == "__notes" { vec![crate::apps::prepare_notes()?.to_str().context("notes path is not UTF-8")?.to_string()] } else { vec![] };
+                let id = self.new_window(crate::browser::launch_args(kind, &paths)?, None)?;
+                if !self.compact() {
+                    let window = self.windows.last_mut().unwrap();
+                    let mut rect = window.rect;
+                    let (width, height) = match kind { "__clock" => (40, 14), "__monitor" => (68, 18), _ => (80, 24) };
+                    rect.w = rect.w.min(width);
+                    rect.h = rect.h.min(height);
+                    window.resize(rect)?;
+                }
+                return Ok(json!({"id":id}));
+            }
             "browser.open"|"editor.new"|"editor.open" => {
                 let kind=if name=="browser.open"||(name=="editor.open"&&args.is_empty()) {"__files"} else {"__edit"};
                 let mut paths=args.to_vec();

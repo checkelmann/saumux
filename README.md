@@ -6,7 +6,8 @@ through a global menu bar. Sessions keep running when a terminal or SSH connecti
 closes.
 
 This is an early implementation of the November 2026 specification. It includes
-the core multiplexer plus a bundled file browser and editor, configuration,
+the core multiplexer plus a bundled file browser, editor, system monitor, notes
+and clock, configuration,
 shelving, workspaces, layout files, multiple clients, coding-agent launchers and saved projects. See [implementation notes](docs/implementation.md) for limits
 and validation still needed before treating it as a daily driver.
 
@@ -258,6 +259,48 @@ Commands are argument arrays, without shell expansion. A configured ID replaces
 the built-in entry with that ID; `enabled = false` hides it. Use the IDs returned
 by `agent.list` (Cursor Agent's ID is `cursor`). Reload configuration after edits.
 
+## Built-in apps
+
+Open the **Apps** menu for **System Monitor**, **Notes** and **Clock**. They run
+inside regular saumux windows: move, resize, zoom, shelve and arrange them as
+usual. They share live colour themes and work in both the TUI and web frontend.
+All data comes from the machine running saumux, including when viewing remotely.
+
+| App | Features | Controls inside the app |
+| --- | --- | --- |
+| System Monitor | Live CPU, RAM, swap, load averages, uptime, per-core meters and a 60-sample CPU history | Space pauses/resumes; R refreshes; toolbar buttons also work |
+| Notes | A persistent UTF-8 scratchpad, using the bundled editor's save, undo, search and close protection | Ctrl+s saves; Ctrl+q asks before closing unsaved edits |
+| Clock | Large digital clock, weekday/date, local or UTC, 12/24-hour display | U switches local/UTC; T switches 12/24h; clickable toolbar |
+
+System Monitor samples approximately once per second; the first CPU reading
+appears after the initial sampling interval. It displays aggregate OS statistics,
+not a process manager. Per-core rows show as many CPUs as fit in the window.
+Clock uses the server host's local timezone by default and falls back to compact
+text in small windows. Clock display options and monitor pause/history belong
+to the running app; reopening starts with defaults. Ctrl+q or Esc closes either
+read-only app.
+
+Notes saves to `$XDG_DATA_HOME/saumux/notes.txt`, or
+`~/.local/share/saumux/notes.txt` when the data directory is unset. It is shared
+between sessions and is created with private permissions (0600). Notes is saved
+explicitly with Ctrl+s or its Save button; it does **not** autosave. Opening Notes
+again in the same session restores/focuses its existing window, including unsaved
+edits. Closing asks before discarding edits. Concurrent changes to the file are
+protected by the editor's external-change check. Save As follows normal editor
+behavior and switches that window to the chosen file; reopening a closed Notes
+window uses the default scratchpad again.
+
+```sh
+saumux ctl monitor.open
+saumux ctl notes.open
+saumux ctl clock.open
+```
+
+These command names also work in configurable keyboard bindings; no additional
+default shortcuts are reserved. `[[menu.apps]]` can add your own launchers.
+New apps require a new session server started with the updated executable;
+existing session servers keep their current code.
+
 ## File browser and editor
 
 Open **File → Browse files** (**Alt+b**) or **File → New text document** (**Alt+e**).
@@ -368,7 +411,7 @@ label = "Editor"
 run = "vim"
 ```
 
-Launcher entries can be added to `system`, `file`, `edit`, `view`, `window`, `agents`, `projects` and
+Launcher entries can be added to `system`, `file`, `edit`, `view`, `window`, `agents`, `projects`, `apps` and
 `help`. Key names use `Ctrl+`, `Alt+`, `Shift+` in that order, function keys such
 as `F6`, `PgUp`, `PgDn`, `Space`, and crossterm names such as `Insert`, `Left`,
 `Enter`. Use `ctl commands` for action names. Rebinding a command replaces its
@@ -413,8 +456,9 @@ macOS. Linux release executables use musl for static linking. Each archive
 contains `saumux`, documentation, the license and the optional terminfo entry.
 Downloads are accompanied by `SHA256SUMS`.
 
-v0.1.0 is already published. Live themes, agent/project support and the web
-frontend require a newer build from `main`; they are not in the v0.1.0 downloads.
+v0.1.0 is already published. Live themes, agent/project support, the web frontend
+and the additional built-in apps require a newer build from `main`; they are
+not in the v0.1.0 downloads.
 
 To publish the next version, update `version` in Cargo.toml, run `cargo check` to update
 Cargo.lock, commit and push those changes, then push the matching version tag:

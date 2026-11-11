@@ -21,6 +21,7 @@ signal-hook = "0.3"
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws"] }
 tokio = { version = "1", features = ["rt", "net", "io-util", "macros", "signal", "sync", "time"] }
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 
 [profile.release]
 lto = "thin"

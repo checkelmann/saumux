@@ -10,6 +10,8 @@ Windows is outside scope. gpm applies only to Linux virtual consoles.
 
 - `browser.rs`, `editor.rs`, `builtin.rs`: bundled terminal applications with
   shared retro rendering, file navigation, text editing and save dialogs.
+- `apps.rs`: live system monitor, local/UTC digital clock and private notes
+  storage. Notes delegates to the shared editor engine with a distinct title.
 - `window.rs`: one portable-pty per program, vt100 cell buffer, 10,000 lines of
   scrollback, OSC titles, bell tracking, terminal-query replies and SIGWINCH.
 - `app.rs`: stacking/focus, geometry, workspaces, menus, outline dragging,
@@ -85,6 +87,51 @@ not rewritten by the picker.
   close requests go through its unsaved-changes prompt; confirmed session shutdown
   still stops every program. No plugins or graphics protocols. The later web
   frontend explicitly adds an opt-in network listener.
+
+## Additional bundled apps
+
+The shared catalog exposes `monitor.open`, `notes.open` and `clock.open` in Apps.
+Their internal PTY entry points are `__monitor`, `__notes` and `__clock`. Existing
+Agents/Projects menu indexes stay unchanged; Apps precedes Help. Browser clients
+receive the same desktop menu and app output automatically. Monitor/clock open in
+compact default windows, with the ordinary zoom/resize/shelf/layout controls.
+
+System Monitor uses the MIT-licensed sysinfo 0.37 library with only its `system`
+feature. It refreshes memory and CPU counters about once per second, waiting for
+the minimum CPU interval before reporting usage. It does not spawn top/htop,
+collect process command lines or manage processes. A capped 60-sample history,
+per-core meters, OS/hostname, swap, load averages and uptime are displayed. Pause
+stops automatic samples; Refresh still takes an eligible manual sample. Resume
+resets the CPU baseline. Totals reflect the OS view rather than a promised
+container/cgroup quota view. Only rows that fit are shown; there is no process list.
+
+Clock uses reentrant libc localtime/gmtime functions (with an inferred timestamp
+type for musl compatibility). It draws large digit glyphs when space permits and
+compact text otherwise. Local/UTC and 12/24-hour choices are runtime-only. It has
+no alarms, timers or background sounds. All app surfaces check live theme roles
+through the existing sidecar/cache, even when the monitor is paused.
+
+Notes prepares `$XDG_DATA_HOME/saumux/notes.txt` or `~/.local/share/saumux/notes.txt`
+with mode 0600, creating its data directory with 0700. Relative/empty XDG data
+paths fall back to HOME. Notes uses `editor::run_named` and therefore retains the
+same UTF-8, 2 MiB limit, undo/search, atomic writes, permission preservation,
+external-change checks and save/discard/cancel behavior. It does not autosave.
+A second launch in the same session focuses/restores the existing Notes window.
+Other sessions open the shared file independently; concurrent saves get the
+normal external-change protection. Save As switches the open document, while a
+fresh Notes window still defaults to the scratchpad path.
+
+`Window::is_builtin` validates both executable identity and the internal entry
+point. `is_editor` covers both `__edit` and `__notes`; keep this contract so desktop
+close sends Ctrl+Q to protect dirty notes. Built-in colour roles are preserved
+even if the default program-output setting is mono. Layouts record their PTY
+commands/working directories, not unsaved text or runtime widget options.
+
+Tests isolate XDG_DATA_HOME as well as runtime/config paths. They cover real
+monitor sampling, menu launch, mouse pause/resume, clock zone/format and theme
+changes, tiny-host resize, Notes persistence/private permissions/reopen/focus,
+unsaved close and concurrent-change rejection. Real Chromium also exercises the
+apps and verifies the paused monitor's content changes palette without restarting.
 
 ## Modified Enter keys
 

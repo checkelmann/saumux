@@ -615,6 +615,9 @@ impl Editor {
     }
 }
 pub fn run(path: Option<&Path>) -> Result<()> {
+    run_named(path, "Editor")
+}
+pub fn run_named(path: Option<&Path>, label: &str) -> Result<()> {
     let doc = Document::open(path)?;
     let mut editor = Editor::new(doc);
     let mut surface = Surface::enter()?;
@@ -631,7 +634,7 @@ pub fn run(path: Option<&Path>) -> Result<()> {
         surface.draw(
             grid,
             &format!(
-                "{}{} — Editor",
+                "{}{} — {label}",
                 if editor.doc.dirty() { "* " } else { "" },
                 name
             ),

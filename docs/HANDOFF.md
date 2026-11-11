@@ -38,10 +38,12 @@ saving with checkpointing program state.
 - Cargo.toml still declares version `0.1.0` on this development snapshot. Before
   the next requested release, choose/bump its version and update Cargo.lock.
   Never move the existing v0.1.0 tag to include newer code.
-- Agent discovery, saved projects, visual agent attention and the browser frontend
-  are the current development feature set; they are not included in v0.1.0.
-- The local `target/release/saumux` was rebuilt with live themes, agent support
-  and the web frontend. Build artifacts are ignored by Git and must be rebuilt in a fresh checkout.
+- Agent discovery, saved projects, visual agent attention, the browser frontend
+  and additional built-in apps are the current development feature set; they are
+  not included in v0.1.0.
+- The local `target/release/saumux` was rebuilt with live themes, agent support,
+  the web frontend and additional apps. Build artifacts are ignored by Git and
+  must be rebuilt in a fresh checkout.
 
 The initial release workflow completed successfully:
 https://github.com/checkelmann/saumux/actions/runs/42853382887
@@ -49,6 +51,9 @@ https://github.com/checkelmann/saumux/actions/runs/42853382887
 The live-theme CI run was queued at the previous conversation handoff. It has
 since completed **successfully on all four targets**, verified on 2026-11-11:
 https://github.com/checkelmann/saumux/actions/runs/42888997606
+
+The later modified-Enter commit `9dcdfed` also passed all native builds and the
+Chromium check: https://github.com/checkelmann/saumux/actions/runs/42983871520
 
 Do not assume these links establish the status of later commits; query their
 current checks. At the previous handoff the user explicitly asked not to wait for
@@ -91,6 +96,11 @@ The implementation notes map modules to responsibilities and list resource bound
   keyboard, resize, clipboard fallback, reconnect and disconnect survival. No auth
   or built-in TLS, as explicitly requested. One chosen session per listener.
 
+- Additional apps: Apps → System Monitor, Notes and Clock, also exposed through
+  `monitor.open`, `notes.open`, `clock.open`. The monitor uses native sysinfo data,
+  the clock offers local/UTC and 12/24h, and Notes is a persistent editor-backed
+  scratchpad in the XDG data directory. All share PTY controls and live themes.
+
 Modified Enter fix: Shift+Enter used to collapse into CR, causing Claude to submit.
 The shared encoder now preserves Shift/Control+Enter as CSI-u; plain Enter and
 legacy Alt+Enter retain their behavior. The TUI requests disambiguated host keys
@@ -113,6 +123,10 @@ no real agent or provider API is used. This is not full child kitty-protocol sup
   or expose arbitrary socket paths. Listener/tab exit must not end the session.
   Vendor licenses are in `web/vendor/` and `THIRD_PARTY_NOTICES.md`; release archives
   must include the notices. Node/Playwright are test dependencies only.
+- `apps.rs` owns monitor/clock and notes storage. Notes uses `__notes` and the
+  editor engine; `Window::is_editor` must recognize it for unsaved-close protection.
+  New notes files are private, saves are explicit, and the same file is shared
+  across sessions with external-change checks. Isolate XDG_DATA_HOME in tests.
 - `app.rs` owns window-manager state and composition; `render.rs` owns cells,
   widths, attributes and ANSI differences. Preserve wide-character clipping and
   whole-glyph cleanup when overlapping either half of a wide character.
@@ -174,16 +188,17 @@ prompt and OSC notices, silent rendering and cross-workspace/shelf acknowledgeme
 These tests do not validate every real agent/version or provider hook integration.
 The separate Python controlling-PTY test checks exact terminal-settings restoration.
 
-Latest web/agent/project validation (2026-11-11): formatting and strict Clippy passed;
-macOS passed 18 unit + 23 integration tests, Linux Docker passed 19 unit + 23
+Latest apps/web/agent/project validation (2026-11-11): formatting and strict Clippy passed;
+macOS passed 19 unit + 25 integration tests, Linux Docker passed 20 unit + 25
 integration tests (including Linux-only gpm). Both passed the client controlling-PTY
 test. Release helper tests and the real Chromium desktop smoke test passed;
 the macOS release binary was rebuilt with embedded web assets. The Chromium test
 uses an isolated runtime and checks rendering/input, dragging, theme changes,
-HTTP clipboard fallback, dialogs, resize, reconnect/refresh, offline assets and
-modified Enter input. The controlling-PTY test also checks host enhancement push/pop
-and exact forwarded Shift+Enter bytes. The
-four native release targets remain covered by CI; these local results do not
+HTTP clipboard fallback, dialogs, resize, reconnect/refresh, offline assets,
+modified Enter input, app launch/controls, Notes save/private permissions and
+live recolouring of paused widgets. The controlling-PTY test also checks host
+enhancement push/pop and exact forwarded Shift+Enter bytes. The four native
+release targets remain covered by CI; these local results do not
 establish the status of a later CI run.
 
 Three CI issues already fixed must not be reintroduced:

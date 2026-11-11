@@ -5,9 +5,27 @@ pub struct Command {
     pub shortcut: &'static str,
 }
 pub const MENUS: &[&str] = &[
-    "System", "File", "Edit", "View", "Window", "Agents", "Projects", "Help",
+    "System", "File", "Edit", "View", "Window", "Agents", "Projects", "Apps", "Help",
 ];
 pub const COMMANDS: &[Command] = &[
+    Command {
+        name: "monitor.open",
+        label: "System Monitor",
+        menu: 7,
+        shortcut: "",
+    },
+    Command {
+        name: "notes.open",
+        label: "Notes",
+        menu: 7,
+        shortcut: "",
+    },
+    Command {
+        name: "clock.open",
+        label: "Clock",
+        menu: 7,
+        shortcut: "",
+    },
     Command {
         name: "agent.start",
         label: "Start agent…",
@@ -101,7 +119,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "menu.open",
         label: "Open menus",
-        menu: 7,
+        menu: 8,
         shortcut: "F10",
     },
     Command {
@@ -251,7 +269,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "help.show",
         label: "Help",
-        menu: 7,
+        menu: 8,
         shortcut: "F1",
     },
 ];

@@ -1,5 +1,6 @@
 mod agents;
 mod app;
+mod apps;
 mod browser;
 mod builtin;
 mod client;
@@ -31,6 +32,16 @@ fn main() {
 }
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|s| s == "__monitor") {
+        return apps::monitor();
+    }
+    if args.first().is_some_and(|s| s == "__clock") {
+        return apps::clock();
+    }
+    if args.first().is_some_and(|s| s == "__notes") {
+        let path = args.get(1).context("Notes needs its storage path")?;
+        return editor::run_named(Some(std::path::Path::new(path)), "Notes");
+    }
     if args.first().is_some_and(|s| s == "__edit") {
         return editor::run(args.get(1).map(std::path::Path::new));
     }

@@ -106,13 +106,24 @@ pub struct Window {
 }
 
 impl Window {
+    pub fn is_builtin(&self) -> bool {
+        self.command.get(1).is_some_and(|s| {
+            matches!(
+                s.as_str(),
+                "__edit" | "__notes" | "__files" | "__monitor" | "__clock"
+            )
+        }) && std::env::current_exe().is_ok_and(|exe| {
+            self.command
+                .first()
+                .is_some_and(|s| std::path::Path::new(s) == exe)
+        })
+    }
     pub fn is_editor(&self) -> bool {
-        self.command.get(1).is_some_and(|s| s == "__edit")
-            && std::env::current_exe().is_ok_and(|exe| {
-                self.command
-                    .first()
-                    .is_some_and(|s| std::path::Path::new(s) == exe)
-            })
+        self.is_builtin()
+            && self
+                .command
+                .get(1)
+                .is_some_and(|s| matches!(s.as_str(), "__edit" | "__notes"))
     }
     pub fn spawn(
         id: u64,
