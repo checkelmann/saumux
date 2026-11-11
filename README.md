@@ -234,6 +234,9 @@ default shortcut; both menus and the key bar show the effective binding.
 
 ## Development
 
+For agents and maintainers, start with [the handoff](https://github.com/checkelmann/saumux/blob/main/docs/HANDOFF.md) and
+[implementation notes](docs/implementation.md).
+
 ```sh
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
@@ -243,7 +246,7 @@ python3 tests/client_pty.py target/debug/saumux
 ```
 
 The integration tests start real PTYs and servers. Python 3 is needed for the
-input/resize fixtures. vim and htop tests run when those programs are installed.
+input/resize fixtures; release helpers require Python 3.11 or newer. vim and htop tests run when those programs are installed.
 CI runs on both Ubuntu and macOS. All dependencies are embedded in the executable;
 no saumux daemon, emulator library or service needs to be installed separately.
 
@@ -256,12 +259,15 @@ macOS. Linux release executables use musl for static linking. Each archive
 contains `saumux`, documentation, the license and the optional terminfo entry.
 Downloads are accompanied by `SHA256SUMS`.
 
-To publish a version, update `version` in Cargo.toml, run `cargo check` to update
+v0.1.0 is already published. Live theme switching is currently on `main` and
+requires a newer build; it is not in the v0.1.0 downloads.
+
+To publish the next version, update `version` in Cargo.toml, run `cargo check` to update
 Cargo.lock, commit and push those changes, then push the matching version tag:
 
 ```sh
-git tag -a v0.1.0 -m "saumux 0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "saumux 0.1.1"
+git push origin v0.1.1
 ```
 
 The release workflow rejects a tag that does not match Cargo.toml. All four builds

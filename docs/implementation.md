@@ -1,5 +1,8 @@
 # Implementation notes
 
+For release state, continuation guidance and the current backlog, see
+[the agent handoff](https://github.com/checkelmann/saumux/blob/main/docs/HANDOFF.md).
+
 The target platforms are Linux **and macOS**, following the updated requirement.
 Windows is outside scope. gpm applies only to Linux virtual consoles.
 
@@ -38,7 +41,8 @@ The original two-colour requirement was removed. `theme.rs` defines semantic
 roles for six 16-colour palettes: Borland, Norton, Amber, Phosphor, Midnight and
 Paper. They cover desktop surfaces, menus, focus, buttons, scroll bars and bundled
 applications. View → Colour theme (Alt+t), `theme.set` and `theme.next` change the
-current session immediately; `look.theme` chooses the default for new sessions. The compositor sends
+current session immediately; `look.theme` chooses the default for new sessions.
+The compositor sends
 standard/bright ANSI sequences for these colours; the terminal palette determines
 the exact shades. Program colour output is preserved by default. Default ink and
 paper follow the active theme; explicit host/hex overrides take precedence.
@@ -78,7 +82,8 @@ not rewritten by the picker.
 Automated checks exercise shell input/output, vim alternate-screen editing,
 htop on Linux, overlap and wide glyphs, keyboard/mouse input translation,
 outline-resize commit/SIGWINCH, clipboard export and bracketed paste, tiling,
-shelf activity, detach/reattach, smallest-client sizing, saving/reloading layouts, browser-to-editor opening, UTF-8 Save As/reopen, and
+shelf activity, detach/reattach, smallest-client sizing, saving/reloading layouts,
+browser-to-editor opening, UTF-8 Save As/reopen, and
 unsaved editor close/cancel/save behavior, live theme changes across open
 components and clients, theme-picker mouse/keyboard operation, configuration
 reload, and detach/reattach theme persistence.
