@@ -507,6 +507,7 @@ impl App {
         self.support.agents = crate::agents::discover(&self.config.agents);
     }
     fn apply_theme(&mut self, id: crate::theme::ThemeId) -> Result<()> {
+        Config::save_default_theme(id)?;
         crate::session::write_theme(&self.name, id)?;
         self.config.look.theme = id;
         self.status = format!("{} theme", id.label());

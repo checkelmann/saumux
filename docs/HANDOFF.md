@@ -151,8 +151,10 @@ no real agent or provider API is used. This is not full child kitty-protocol sup
 - Live palettes are semantic roles in `theme.rs`. `look.theme` picks the startup
   palette; `ink = "theme"` and `paper = "theme"` follow it for default program
   output. Explicit host/hex overrides and program-specified colours take precedence.
-- Runtime theme choice is per session, survives detach, and does not rewrite the
-  user's config. Configuration reload reapplies the configured theme.
+- Runtime theme choice is applied per session and shared with its clients. Each
+  interactive theme change also atomically saves `look.theme` as the default for
+  future sessions while preserving the rest of the TOML file. Configuration
+  reload reapplies that saved default.
 - The server atomically publishes `<session>.theme` with mode 0600 inside its
   private runtime directory. `SAUMUX_THEME_FILE` tells bundled applications where
   to read it, at most every 100 ms through a thread-local cache. Session shutdown

@@ -154,10 +154,10 @@ saumux ctl theme.set amber
 saumux ctl theme.next
 ```
 
-The choice belongs to the current session and survives detach/reattach. To choose
-a default for new sessions, set `theme = "midnight"` in `[look]` in the configuration.
-**System → Reload configuration** also applies the configured theme to a running
-session. Selecting a theme does not rewrite the configuration file.
+The selected theme is saved as `look.theme` in the saumux configuration, so new
+sessions inherit it. Each running session still keeps its own choice across
+detach/reattach. **System → Reload configuration** applies the configured theme
+to the current session. You can also set `theme = "midnight"` in `[look]` by hand.
 
 `look.ink = "theme"` and `look.paper = "theme"` follow the palette for default
 program output. You can override either with `"default"` for the host terminal's

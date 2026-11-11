@@ -54,7 +54,7 @@ The original two-colour requirement was removed. `theme.rs` defines semantic
 roles for six 16-colour palettes: Borland, Norton, Amber, Phosphor, Midnight and
 Paper. They cover desktop surfaces, menus, focus, buttons, scroll bars and bundled
 applications. View → Colour theme (Alt+t), `theme.set` and `theme.next` change the
-current session immediately; `look.theme` chooses the default for new sessions.
+current session immediately and persist `look.theme` for future sessions.
 The compositor sends
 standard/bright ANSI sequences for these colours; the terminal palette determines
 the exact shades. Program colour output is preserved by default. Default ink and
@@ -65,8 +65,9 @@ in the private socket directory, using an atomic rename. Bundled applications
 inherit `SAUMUX_THEME_FILE` and check it at most once every 100 ms. Their normal
 idle redraw loop picks up changes without injected keystrokes, restarting PTYs,
 or losing editing state. Theme changes are shared by all clients and survive
-client disconnects. Session shutdown removes the sidecar; configuration files are
-not rewritten by the picker.
+client disconnects. Session shutdown removes the sidecar. Interactive theme
+changes atomically update the default in the user configuration, preserving other
+settings and comments; configuration reload applies the saved default again.
 
 ## Decisions and bounds
 
