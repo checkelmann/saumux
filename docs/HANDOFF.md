@@ -170,6 +170,8 @@ Use stable Rust. Cargo declares a minimum of 1.88, but the minimum toolchain has
 not been separately validated. Development validation also needs Python 3;
 release helpers specifically require Python **3.11+** (`tomllib`). Install vim and
 htop to exercise their optional smoke tests; otherwise those test functions skip.
+The root Makefile wraps the routine local commands: `make help`, `make check`,
+`make verify`, `make browser-deps` and `make browser`.
 
 ```sh
 cargo fmt --check

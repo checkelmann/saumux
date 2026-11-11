@@ -8,6 +8,9 @@ Windows is outside scope. gpm applies only to Linux virtual consoles.
 
 ## Structure
 
+The root `Makefile` wraps common developer workflows (`make check`, `make verify`,
+and optional `make browser`).
+
 - `browser.rs`, `editor.rs`, `builtin.rs`: bundled terminal applications with
   shared retro rendering, file navigation, text editing and save dialogs.
 - `apps.rs`: live system monitor, local/UTC digital clock and legacy scratchpad

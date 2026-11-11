@@ -432,13 +432,10 @@ default shortcut; both menus and the key bar show the effective binding.
 For agents and maintainers, start with [the handoff](https://github.com/checkelmann/saumux/blob/main/docs/HANDOFF.md) and
 [implementation notes](docs/implementation.md).
 
-```sh
-cargo fmt --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-cargo build --locked
-python3 tests/client_pty.py target/debug/saumux
-```
+Run `make help` to see the available development targets. Common commands are
+`make check` (format, lint and Rust tests), `make build`, `make release`,
+`make pty` (terminal restoration check), and `make verify` (the local release
+checks). `make run ARGS='new dev'` starts a new development session.
 
 The integration tests start real PTYs and servers. Python 3 is needed for the
 input/resize fixtures; release helpers require Python 3.11 or newer. vim and htop tests run when those programs are installed.
@@ -448,9 +445,8 @@ no separate saumux daemon, emulator library or service needs to be installed.
 Optional real-browser check (Node 22+; Chromium is installed only for testing):
 
 ```sh
-npm ci --prefix tests/browser --ignore-scripts
-npm exec --prefix tests/browser -- playwright install chromium
-node tests/browser/smoke.cjs target/debug/saumux
+make browser-deps
+make browser
 ```
 
 CI and tag releases also run this check on Linux. The fixture starts its own
