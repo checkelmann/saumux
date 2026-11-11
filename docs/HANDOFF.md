@@ -123,6 +123,11 @@ no real agent or provider API is used. This is not full child kitty-protocol sup
   or expose arbitrary socket paths. Listener/tab exit must not end the session.
   Vendor licenses are in `web/vendor/` and `THIRD_PARTY_NOTICES.md`; release archives
   must include the notices. Node/Playwright are test dependencies only.
+- `monitor_view.rs` renders monitor snapshots with high-contrast `monitor_*`
+  theme roles, thin meters, a 0–100% Braille line chart over 60 readings and a
+  paged multi-column core grid. Its axes count samples, including manual refresh.
+  Keep presentation independent of sampling and preserve pause during resize/theme
+  changes. CPU data must remain real; empty/partial history is not fabricated.
 - `apps.rs` owns monitor/clock and notes storage. Notes uses `__notes` and the
   editor engine; `Window::is_editor` must recognize it for unsaved-close protection.
   New notes files are private, saves are explicit, and the same file is shared
@@ -189,14 +194,15 @@ These tests do not validate every real agent/version or provider hook integratio
 The separate Python controlling-PTY test checks exact terminal-settings restoration.
 
 Latest apps/web/agent/project validation (2026-11-11): formatting and strict Clippy passed;
-macOS passed 19 unit + 25 integration tests, Linux Docker passed 20 unit + 25
+macOS passed 20 unit + 25 integration tests, Linux Docker passed 21 unit + 25
 integration tests (including Linux-only gpm). Both passed the client controlling-PTY
 test. Release helper tests and the real Chromium desktop smoke test passed;
 the macOS release binary was rebuilt with embedded web assets. The Chromium test
 uses an isolated runtime and checks rendering/input, dragging, theme changes,
 HTTP clipboard fallback, dialogs, resize, reconnect/refresh, offline assets,
 modified Enter input, app launch/controls, Notes save/private permissions and
-live recolouring of paused widgets. The controlling-PTY test also checks host
+live recolouring of paused widgets. Monitor snapshot checks cover scaled chart
+axes, paged high core counts, all six palettes and tiny host sizes. The controlling-PTY test also checks host
 enhancement push/pop and exact forwarded Shift+Enter bytes. The four native
 release targets remain covered by CI; these local results do not
 establish the status of a later CI run.

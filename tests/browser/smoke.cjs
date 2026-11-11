@@ -126,6 +126,7 @@ async function run() {
   ctl('layout.tile');
   const tiledMonitor=ctl('list').find(w=>w.command[1]==='__monitor').rect;
   await page.waitForFunction(rect => [...document.querySelectorAll('.xterm-rows > div')][rect.y]?.textContent.slice(rect.x,rect.x+rect.w).includes('System Monitor'), tiledMonitor);
+  await page.waitForFunction(rect => [...document.querySelectorAll('.xterm-rows > div')][rect.y+2]?.textContent.slice(rect.x,rect.x+rect.w).includes('System Monitor'), tiledMonitor);
   if (process.env.SAUMUX_TEST_SCREENSHOT) await page.screenshot({path:process.env.SAUMUX_TEST_SCREENSHOT});
   assert.deepEqual(failures, []);
   assert.deepEqual(external, []);

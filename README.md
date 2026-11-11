@@ -268,13 +268,19 @@ All data comes from the machine running saumux, including when viewing remotely.
 
 | App | Features | Controls inside the app |
 | --- | --- | --- |
-| System Monitor | Live CPU, RAM, swap, load averages, uptime, per-core meters and a 60-sample CPU history | Space pauses/resumes; R refreshes; toolbar buttons also work |
+| System Monitor | Aligned CPU/RAM/swap readings, a scaled CPU history chart, load/uptime and compact per-core meters | Space pauses/resumes; R refreshes; arrows, PgUp/PgDn or wheel scroll cores |
 | Notes | A persistent UTF-8 scratchpad, using the bundled editor's save, undo, search and close protection | Ctrl+s saves; Ctrl+q asks before closing unsaved edits |
 | Clock | Large digital clock, weekday/date, local or UTC, 12/24-hour display | U switches local/UTC; T switches 12/24h; clickable toolbar |
 
 System Monitor samples approximately once per second; the first CPU reading
 appears after the initial sampling interval. It displays aggregate OS statistics,
-not a process manager. Per-core rows show as many CPUs as fit in the window.
+not a process manager. The CPU line chart has a fixed 0–100% scale and shows the
+latest 60 readings, with the newest at the right. Readings normally arrive once
+per second; manual refresh adds readings too. Per-core meters use columns and
+can be scrolled with arrows, PgUp/PgDn, Home/End or the mouse wheel. A separate,
+high-contrast monitor surface follows the selected theme; its thin meters leave
+empty space rather than dense shaded tracks. The Pause button changes to Resume
+while readings are frozen. Small windows use a compact summary.
 Clock uses the server host's local timezone by default and falls back to compact
 text in small windows. Clock display options and monitor pause/history belong
 to the running app; reopening starts with defaults. Ctrl+q or Esc closes either

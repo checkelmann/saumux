@@ -45,11 +45,7 @@ pub fn prepare_notes() -> Result<PathBuf> {
     Ok(path)
 }
 
-const MONITOR_ACTIONS: &[(&str, &str)] = &[
-    (" Pause/Resume ", "pause"),
-    (" Refresh ", "refresh"),
-    (" Close ", "close"),
-];
+const MONITOR_ACTIONS: &[(&str, &str)] = crate::monitor_view::ACTIONS;
 const CLOCK_ACTIONS: &[(&str, &str)] = &[
     (" Local/UTC ", "zone"),
     (" 12/24h ", "format"),
@@ -64,6 +60,7 @@ struct Monitor {
     paused: bool,
     last_sample: Instant,
     samples: u64,
+    core_offset: usize,
     host: String,
     os: String,
     uptime: u64,
@@ -82,6 +79,7 @@ impl Monitor {
             paused: false,
             last_sample: Instant::now(),
             samples: 0,
+            core_offset: 0,
             host: printable(&System::host_name().unwrap_or_else(|| "Host".into())),
             os: printable(
                 &System::long_os_version().unwrap_or_else(|| std::env::consts::OS.into()),
@@ -129,122 +127,41 @@ impl Monitor {
         }
     }
     fn draw(&self, width: u16, height: u16, theme: &Theme) -> Grid {
-        let mut grid = background(width, height, theme);
-        builtin::toolbar(&mut grid, 0, MONITOR_ACTIONS);
-        let mut lines = vec![
-            format!("System Monitor · {}", self.host),
-            self.os.clone(),
-            self.cpu
-                .map(|cpu| {
-                    format!(
-                        "CPU   {:5.1}%  {}",
-                        cpu,
-                        meter(cpu, width.saturating_sub(16) as usize)
-                    )
-                })
-                .unwrap_or_else(|| "CPU   sampling…".into()),
-            format!(
-                "RAM   {} / {}  {}",
-                bytes(self.system.used_memory()),
-                bytes(self.system.total_memory()),
-                meter(
-                    percent(self.system.used_memory(), self.system.total_memory()),
-                    width.saturating_sub(35) as usize
-                )
-            ),
-            format!(
-                "Swap  {} / {}",
-                bytes(self.system.used_swap()),
-                bytes(self.system.total_swap())
-            ),
-            format!(
-                "Load  {:.2}  {:.2}  {:.2}  (1 / 5 / 15 min)",
-                self.load[0], self.load[1], self.load[2]
-            ),
-            format!(
-                "Up    {} · {} logical CPUs",
-                uptime(self.uptime),
-                self.system.cpus().len()
-            ),
-            format!(
-                "CPU history  {}",
-                sparkline(&self.history, width.saturating_sub(15) as usize)
-            ),
-        ];
-        for (i, usage) in self.cores.iter().enumerate() {
-            lines.push(format!(
-                "CPU {:>3}  {:5.1}%  {}",
-                i + 1,
-                usage,
-                meter(*usage, width.saturating_sub(20) as usize)
-            ));
-        }
-        for (i, line) in lines
-            .iter()
-            .take(height.saturating_sub(2) as usize)
-            .enumerate()
-        {
-            grid.text(
-                1,
-                i as u16 + 1,
-                line,
-                width.saturating_sub(2),
-                if i == 2 {
-                    theme.directory.clone()
-                } else {
-                    theme.text.clone()
-                },
-            );
-        }
-        builtin::bar(
-            &mut grid,
-            height.saturating_sub(1),
-            &format!(
-                "{} · sample {} · Space pause · R refresh · Ctrl+Q close",
-                if self.paused { "Paused" } else { "Live · 1s" },
-                self.samples
-            ),
-        );
-        grid
+        let history: Vec<_> = self.history.iter().copied().collect();
+        crate::monitor_view::draw(
+            width,
+            height,
+            &crate::monitor_view::Snapshot {
+                host: &self.host,
+                os: &self.os,
+                cpu: self.cpu,
+                used: self.system.used_memory(),
+                total: self.system.total_memory(),
+                swap_used: self.system.used_swap(),
+                swap_total: self.system.total_swap(),
+                cores: &self.cores,
+                cpu_count: self.system.cpus().len(),
+                history: &history,
+                paused: self.paused,
+                samples: self.samples,
+                uptime: self.uptime,
+                load: self.load,
+                core_offset: self.core_offset,
+            },
+            theme,
+        )
+    }
+    fn scroll(&mut self, delta: isize, width: u16, height: u16) {
+        let (capacity, _) = crate::monitor_view::core_capacity(width, height);
+        self.core_offset = self
+            .core_offset
+            .saturating_add_signed(delta)
+            .min(self.cores.len().saturating_sub(capacity));
     }
 }
+
 fn printable(text: &str) -> String {
     text.chars().filter(|c| !c.is_control()).take(120).collect()
-}
-fn bytes(value: u64) -> String {
-    if value >= 1024 * 1024 * 1024 {
-        format!("{:.1} GiB", value as f64 / (1024.0 * 1024.0 * 1024.0))
-    } else {
-        format!("{:.0} MiB", value as f64 / (1024.0 * 1024.0))
-    }
-}
-fn percent(used: u64, total: u64) -> f32 {
-    if total == 0 {
-        0.0
-    } else {
-        (used as f64 / total as f64 * 100.0).clamp(0.0, 100.0) as f32
-    }
-}
-fn uptime(seconds: u64) -> String {
-    format!(
-        "{}d {:02}h {:02}m",
-        seconds / 86400,
-        seconds / 3600 % 24,
-        seconds / 60 % 60
-    )
-}
-fn meter(value: f32, width: usize) -> String {
-    let width = width.min(60);
-    let filled = ((value.clamp(0.0, 100.0) / 100.0 * width as f32).round() as usize).min(width);
-    format!("{}{}", "█".repeat(filled), "░".repeat(width - filled))
-}
-fn sparkline(samples: &VecDeque<f32>, width: usize) -> String {
-    let levels = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-    samples
-        .iter()
-        .skip(samples.len().saturating_sub(width))
-        .map(|v| levels[((v.clamp(0.0, 100.0) / 100.0 * 7.0).round() as usize).min(7)])
-        .collect()
 }
 fn background(width: u16, height: u16, theme: &Theme) -> Grid {
     let mut grid = Grid::new(width, height);
@@ -284,14 +201,46 @@ pub fn monitor() -> Result<()> {
         if close_key(&event) {
             break;
         }
-        let action = click(&event, MONITOR_ACTIONS).or_else(|| match event {
+        let (capacity, columns) = crate::monitor_view::core_capacity(width, height);
+        let action = click(&event, MONITOR_ACTIONS).or_else(|| match &event {
             Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
                 KeyCode::Char(' ') => Some("pause".into()),
                 KeyCode::Char('r' | 'R') => Some("refresh".into()),
+                KeyCode::Down => {
+                    monitor.scroll(columns as isize, width, height);
+                    None
+                }
+                KeyCode::Up => {
+                    monitor.scroll(-(columns as isize), width, height);
+                    None
+                }
+                KeyCode::PageDown => {
+                    monitor.scroll(capacity as isize, width, height);
+                    None
+                }
+                KeyCode::PageUp => {
+                    monitor.scroll(-(capacity as isize), width, height);
+                    None
+                }
+                KeyCode::Home => {
+                    monitor.core_offset = 0;
+                    None
+                }
+                KeyCode::End => {
+                    monitor.core_offset = monitor.cores.len().saturating_sub(capacity);
+                    None
+                }
                 _ => None,
             },
             _ => None,
         });
+        if let Event::Mouse(mouse) = event {
+            match mouse.kind {
+                MouseEventKind::ScrollDown => monitor.scroll(columns as isize, width, height),
+                MouseEventKind::ScrollUp => monitor.scroll(-(columns as isize), width, height),
+                _ => {}
+            }
+        }
         match action.as_deref() {
             Some("close") => break,
             Some("pause") => monitor.pause(),
@@ -502,7 +451,5 @@ mod tests {
         for (w, h) in [(1, 1), (8, 3), (50, 15)] {
             clock.draw(w, h, 0, &Theme::default()).unwrap();
         }
-        assert_eq!(percent(9, 0), 0.0);
-        assert_eq!(percent(200, 100), 100.0);
     }
 }

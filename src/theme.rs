@@ -30,6 +30,10 @@ pub struct Theme {
     pub directory: Style,
     pub field: Style,
     pub warning: Style,
+    pub monitor_text: Style,
+    pub monitor_muted: Style,
+    pub monitor_accent: Style,
+    pub monitor_grid: Style,
 }
 impl Default for Theme {
     fn default() -> Self {
@@ -54,6 +58,10 @@ impl Default for Theme {
             directory: colors(15, 4),
             field: colors(14, 4),
             warning: colors(15, 1),
+            monitor_text: colors(15, 0),
+            monitor_muted: colors(7, 0),
+            monitor_accent: colors(11, 0),
+            monitor_grid: colors(8, 0),
         }
     }
 }
@@ -124,7 +132,7 @@ impl std::str::FromStr for ThemeId {
 }
 impl Theme {
     pub fn named(id: ThemeId) -> Self {
-        match id {
+        let mut theme = match id {
             ThemeId::Borland => Self::default(),
             ThemeId::Norton => Self {
                 desktop: colors(6, 4),
@@ -231,7 +239,19 @@ impl Theme {
                 field: colors(0, 15),
                 ..Self::default()
             },
-        }
+        };
+        let (fg, muted, accent, grid, bg) = match id {
+            ThemeId::Borland | ThemeId::Norton => (15, 7, 11, 8, 0),
+            ThemeId::Amber => (14, 3, 14, 8, 0),
+            ThemeId::Phosphor => (10, 2, 10, 8, 0),
+            ThemeId::Midnight => (15, 7, 13, 8, 0),
+            ThemeId::Paper => (0, 8, 4, 8, 15),
+        };
+        theme.monitor_text = colors(fg, bg);
+        theme.monitor_muted = colors(muted, bg);
+        theme.monitor_accent = colors(accent, bg);
+        theme.monitor_grid = colors(grid, bg);
+        theme
     }
 }
 

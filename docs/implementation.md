@@ -12,6 +12,8 @@ Windows is outside scope. gpm applies only to Linux virtual consoles.
   shared retro rendering, file navigation, text editing and save dialogs.
 - `apps.rs`: live system monitor, local/UTC digital clock and private notes
   storage. Notes delegates to the shared editor engine with a distinct title.
+- `monitor_view.rs`: responsive monitor layout, scaled Braille CPU line chart,
+  thin meters and paged core grid, rendered from a sampling-independent snapshot.
 - `window.rs`: one portable-pty per program, vt100 cell buffer, 10,000 lines of
   scrollback, OSC titles, bell tracking, terminal-query replies and SIGWINCH.
 - `app.rs`: stacking/focus, geometry, workspaces, menus, outline dragging,
@@ -103,7 +105,24 @@ collect process command lines or manage processes. A capped 60-sample history,
 per-core meters, OS/hostname, swap, load averages and uptime are displayed. Pause
 stops automatic samples; Refresh still takes an eligible manual sample. Resume
 resets the CPU baseline. Totals reflect the OS view rather than a promised
-container/cgroup quota view. Only rows that fit are shown; there is no process list.
+container/cgroup quota view. There is no process list.
+
+The monitor uses dedicated `monitor_*` semantic roles in `theme.rs`: a dark,
+high-contrast surface for the retro palettes and a light surface for Paper.
+CPU/RAM/swap percentages, thin line meters and detail columns stay aligned.
+The CPU chart rasterizes connected sample points into 2×4 Braille subcells, on a
+fixed 0–100% scale. Its axis covers the last 60 readings, not wall-clock seconds:
+manual refresh can sample faster, and a paused chart does not invent history.
+Partial histories are right-aligned. Sparse reference lines replace dense shading.
+
+Default monitor windows are up to 80×26 cells. Layouts adapt the chart height,
+use up to three columns of cores and cap the content width on large hosts.
+Arrows, PgUp/PgDn, Home/End and wheel events scroll cores beyond the visible page;
+the heading identifies the visible range. Tiny windows retain a compact summary.
+Pause/Resume buttons have matching widths/hit regions, and the footer chooses
+hints that fit. Sampling and pause state remain independent of presentation.
+Renderer tests use deterministic snapshots across all six palettes, partial/empty
+histories, high core counts and tiny sizes.
 
 Clock uses reentrant libc localtime/gmtime functions (with an inferred timestamp
 type for musl compatibility). It draws large digit glyphs when space permits and

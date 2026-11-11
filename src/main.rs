@@ -10,6 +10,7 @@ mod editor;
 mod geometry;
 mod gpm;
 mod input;
+mod monitor_view;
 mod projects;
 mod protocol;
 mod render;
