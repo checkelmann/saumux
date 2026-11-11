@@ -500,7 +500,7 @@ impl Editor {
             .take(height as usize)
             .enumerate()
         {
-            builtin::line(grid, y + line_y as u16, line, self.left, width);
+            builtin::line_at(grid, x, y + line_y as u16, line, self.left, width);
         }
         let col = builtin::column(
             &self.doc.state.lines[self.doc.state.row],
