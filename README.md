@@ -85,15 +85,18 @@ browser's permissions. Shift+Insert still pastes the internal saumux clipboard.
 Closing/reloading a tab or detaching leaves its programs running. Reconnect
 attaches again. **Ctrl+C** or SIGTERM stops the foreground web listener and
 leaves the session server running. **System → End session** still ends the
-session, just as in the TUI. The listener exposes one configured session; it has
-no remote session picker. Its Unix socket stays private to the owning user.
+session, just as in the TUI. Closing the last window leaves the session open with
+the desktop menus available, so you can start another window without restarting
+the web listener. The listener exposes one configured session; it has no remote
+session picker. Its Unix socket stays private to the owning user.
 
 ## Using the desktop
 
 Click **System → New shell**, or press **Alt+n**, to open a window. Click a window
 to focus it, drag its title to move it, and drag its left or bottom edge to resize
 it. The bottom-right corner resizes in both directions. The right edge is a
-scroll bar. Title-bar buttons close and zoom the window.
+scroll bar. Title-bar buttons close, minimize to the shelf (`[_]`) and zoom the
+window. Minimized programs keep running; click their shelf tab to restore them.
 
 | Action | Default shortcut |
 | --- | --- |
@@ -109,7 +112,7 @@ scroll bar. Title-bar buttons close and zoom the window.
 | Copy / paste internal clipboard | Alt+c / Shift+Insert |
 | Previous / next workspace | Alt+Left / Alt+Right |
 | Colour theme picker | Alt+t |
-| Saved projects / agent attention | Alt+p / Alt+a |
+| Saved projects / agent attention | Alt+p / Ctrl+g |
 | Help | F1 |
 
 Every function-key label in the bottom bar is clickable. Menus also contain
@@ -143,6 +146,12 @@ Esc closes it without changing anything.
 | Phosphor | Green CRT text on black |
 | Midnight | Dark charcoal with violet and cyan accents |
 | Paper | Light paper with dark text and blue accents |
+| Ocean | Deep blue with seafoam titles and cyan menus |
+| Plum | Purple panels with pink titles and silver menus |
+| Forest | Black and green with silver menus |
+| Burgundy | Wine-red frames with warm cream editor text |
+| Ice | Light cyan and white with blue accents |
+| Slate | Charcoal and silver with cyan titles |
 
 Changes apply to the desktop, menus, frames, default terminal colours, and all
 open bundled editors/browsers within about 100 ms. Running programs keep their
@@ -206,10 +215,17 @@ saumux ctl project.remove Work
 ```
 
 An agent needing attention gets a coloured `!` on its title/shelf tab and a
-persistent clickable badge in the key bar. **Alt+a** or **Agents → Agent
-attention…** lists alerts across all workspaces and restores/focuses the selected
-agent. Focus alone keeps its alert; typing, pasting or an application mouse click
+persistent clickable `!N` indicator beside the top-row clock, plus a badge in
+the key bar. **Ctrl+g** or **Agents → Agent attention…** lists alerts across all
+workspaces and restores/focuses the selected agent. The top indicator includes
+shelved agents; click it to open the attention list. Notifications do not
+automatically open or focus windows. Focus alone keeps its alert; typing,
+pasting or an application mouse click
 acknowledges it. **Clear active agent alert** also clears it. There is no sound.
+
+**Ctrl+g** uses the Control key on macOS, Linux and the browser frontend; no
+Option/Meta terminal setting is required. It reserves Ctrl+g from applications;
+rebind or unbind `agent.attention` under `[keys]` if needed.
 
 Attention can be reported explicitly through `ctl`, OSC 9 text notifications,
 OSC 777 notifications or a program's terminal bell. A bell becomes a visual
@@ -270,7 +286,7 @@ All data comes from the machine running saumux, including when viewing remotely.
 | App | Features | Controls inside the app |
 | --- | --- | --- |
 | System Monitor | Aligned CPU/RAM/swap readings, a scaled CPU history chart, load/uptime and compact per-core meters | Space pauses/resumes; R refreshes; arrows, PgUp/PgDn or wheel scroll cores |
-| Notes | Markdown notebook with a searchable note list, rendered reading preview, and inline editing | N creates; / searches; Enter/E or click the preview to edit; Ctrl+s saves |
+| Notes | Markdown notebook with a searchable note list, rendered reading preview, and inline editing | N creates; / searches; Enter/E or click the preview to edit; Ctrl+s saves; Delete removes with confirmation |
 | Clock | Large digital clock, weekday/date, local or UTC, 12/24-hour display | U switches local/UTC; T switches 12/24h; clickable toolbar |
 
 System Monitor samples approximately once per second; the first CPU reading
@@ -291,10 +307,22 @@ Notes lists Markdown files in `$XDG_DATA_HOME/saumux/`, or
 `~/.local/share/saumux/` when the data directory is unset. It also keeps an
 existing `notes.txt` scratchpad visible. Press **N** to create a Markdown note,
 **/** to search titles and contents, and **Enter** or **E** to edit the selected
-note inline; clicking in its preview also enters edit mode. The notebook renders
-headings, lists, task checkboxes and quotes in preview mode. **Ctrl+S** saves,
+note inline; clicking in its preview also enters edit mode. The preview renders
+CommonMark with tables, task lists, strikethrough and footnotes.
+It supports all six heading levels, bold/italic, inline and fenced code, nested
+ordered/unordered lists, quotes, rules and links. Text wraps to the pane width;
+PgUp/PgDn and the wheel scroll rendered rows. Links show their destinations and
+images show alt text plus their paths. HTML stays literal; images are not loaded
+and code blocks have no syntax highlighting. **Ctrl+S** saves,
 **Ctrl+Z/Y** undo and redo, and **Esc** returns to preview with a
 save/discard/cancel prompt for unsaved edits.
+
+In preview, press **Delete** or click **Delete** to remove the selected file.
+The prompt names the file: **Enter** or **Delete permanently** confirms; **Esc**
+or **Cancel** keeps it. Deletion is permanent and refreshes the current search.
+Return from editing first; unsaved edits retain save/discard/cancel protection.
+An empty notebook starts with no files; deleted legacy scratchpads stay deleted.
+
 Inline editing uses the bundled editor's UTF-8 handling, undo and save protection.
 New notes are private
 (0600) in a private data directory (0700). Reopening Notes in a session focuses
@@ -376,7 +404,8 @@ its session automatically through `SAUMUX`. Window IDs appear in the window list
 and JSON listing; `saumux ctl window.focus 2` restores and focuses window 2.
 
 **System → Detach** disconnects the current client. **End session** asks for
-confirmation and stops all its programs. Closing the last window ends the server.
+confirmation and stops all its programs. Closing the last window leaves an empty
+session running; use **System → New shell** or another launcher to continue.
 An unexpected client exit leaves programs running. Several clients share focus;
 the smallest attached terminal determines desktop size. Larger terminals have
 empty space outside it.
@@ -401,7 +430,7 @@ configuration leaves the existing configuration active.
 start = ["$SHELL"]
 
 [look]
-theme = "borland"     # borland, norton, amber, phosphor, midnight, paper
+theme = "borland"     # use `saumux ctl theme.list` to list all twelve palettes
 ink = "theme"         # theme default; "default" uses the host; or "#RRGGBB"
 paper = "theme"       # theme default; "default" uses the host; or "#RRGGBB"
 content = "color"     # preserve program colours; optional "mono" maps attributes

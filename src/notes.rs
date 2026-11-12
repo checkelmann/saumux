@@ -15,9 +15,12 @@ const ACTIONS: &[(&str, &str)] = &[
     (" Edit ", "edit"),
     (" New ", "new"),
     (" Search ", "search"),
+    (" Delete ", "delete"),
     (" Refresh ", "refresh"),
     (" Close ", "close"),
 ];
+const DELETE_ACTIONS: &[(&str, &str)] =
+    &[(" Delete permanently ", "confirm"), (" Cancel ", "cancel")];
 const EDIT_ACTIONS: &[(&str, &str)] = &[
     (" Save ", "save"),
     (" Undo ", "undo"),
@@ -75,6 +78,7 @@ struct Notebook {
     editing: bool,
     leave_prompt: bool,
     close_after_leave: bool,
+    delete_prompt: Option<PathBuf>,
 }
 impl Notebook {
     fn new() -> Result<Self> {
@@ -86,11 +90,12 @@ impl Notebook {
             top: 0,
             preview_top: 0,
             filter: None,
-            message: "Enter / E edit · N new Markdown note · / search".into(),
+            message: "Enter / E edit · N new · / search · Del delete".into(),
             editor: None,
             editing: false,
             leave_prompt: false,
             close_after_leave: false,
+            delete_prompt: None,
         };
         this.refresh()?;
         Ok(this)
@@ -114,6 +119,38 @@ impl Notebook {
     }
     fn selected_path(&self) -> Option<&PathBuf> {
         self.notes.get(self.selected)
+    }
+    fn request_delete(&mut self) {
+        if self.editing {
+            return;
+        }
+        if let Some(path) = self.selected_path().cloned() {
+            self.message = format!(
+                "Delete {}? · Enter delete permanently · Esc cancel",
+                path.file_name().unwrap_or_default().to_string_lossy()
+            );
+            self.delete_prompt = Some(path);
+        } else {
+            self.message = "No note selected".into();
+        }
+    }
+    fn cancel_delete(&mut self) {
+        self.delete_prompt = None;
+        self.message = "Deletion cancelled".into();
+    }
+    fn confirm_delete(&mut self) {
+        let Some(path) = self.delete_prompt.take() else {
+            return;
+        };
+        match fs::remove_file(&path) {
+            Ok(()) => {
+                self.message = match self.refresh() {
+                    Ok(()) => "Note deleted".into(),
+                    Err(error) => format!("Note deleted; refresh failed: {error:#}"),
+                };
+            }
+            Err(error) => self.message = format!("Delete failed: {error}"),
+        }
     }
     fn begin_edit(&mut self) -> Result<()> {
         let Some(path) = self.selected_path().cloned() else {
@@ -203,7 +240,13 @@ impl Notebook {
         builtin::toolbar(
             &mut grid,
             0,
-            if self.editing { EDIT_ACTIONS } else { ACTIONS },
+            if self.delete_prompt.is_some() {
+                DELETE_ACTIONS
+            } else if self.editing {
+                EDIT_ACTIONS
+            } else {
+                ACTIONS
+            },
         );
         let split = width.saturating_sub(12).clamp(1, 32);
         grid.fill(
@@ -272,7 +315,7 @@ impl Notebook {
             } else {
                 let text = fs::read_to_string(&path)
                     .unwrap_or_else(|e| format!("Could not read note: {e}"));
-                markdown_preview(
+                crate::notes_markdown::draw(
                     &mut grid,
                     pane_x,
                     1,
@@ -310,44 +353,6 @@ impl Notebook {
     }
 }
 
-fn markdown_preview(
-    grid: &mut Grid,
-    x: u16,
-    y: u16,
-    width: u16,
-    height: u16,
-    text: &str,
-    top: usize,
-) {
-    let theme = crate::theme::current();
-    for (row, line) in text.lines().skip(top).enumerate() {
-        if row >= height as usize {
-            break;
-        }
-        let (rendered, style) = if let Some(h) = line.strip_prefix("### ") {
-            (h.to_string(), theme.hotkey.clone())
-        } else if let Some(h) = line.strip_prefix("## ") {
-            (h.to_string(), theme.monitor_accent.clone())
-        } else if let Some(h) = line.strip_prefix("# ") {
-            (h.to_string(), theme.title.clone())
-        } else if let Some(s) = line.strip_prefix("- [ ] ") {
-            (format!("☐ {s}"), theme.warning.clone())
-        } else if let Some(s) = line
-            .strip_prefix("- [x] ")
-            .or_else(|| line.strip_prefix("- [X] "))
-        {
-            (format!("☑ {s}"), theme.hotkey.clone())
-        } else if let Some(s) = line.strip_prefix("- ").or_else(|| line.strip_prefix("* ")) {
-            (format!("• {s}"), theme.editor.clone())
-        } else if let Some(s) = line.strip_prefix("> ") {
-            (s.to_string(), theme.monitor_muted.clone())
-        } else {
-            (line.to_string(), theme.editor.clone())
-        };
-        grid.text(x, y + row as u16, &rendered, width, style);
-    }
-}
-
 pub fn run() -> Result<()> {
     let mut notebook = Notebook::new()?;
     let mut surface = Surface::enter()?;
@@ -363,6 +368,30 @@ pub fn run() -> Result<()> {
         let Some(event) = surface.event()? else {
             continue;
         };
+        // Freeze selection and editing while confirming the captured file path.
+        if notebook.delete_prompt.is_some() {
+            match event {
+                Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
+                    KeyCode::Enter => notebook.confirm_delete(),
+                    KeyCode::Esc => notebook.cancel_delete(),
+                    KeyCode::Char('q' | 'c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        break;
+                    }
+                    _ => {}
+                },
+                Event::Mouse(m)
+                    if m.kind == MouseEventKind::Down(MouseButton::Left) && m.row == 0 =>
+                {
+                    match builtin::action_at(m.column, DELETE_ACTIONS) {
+                        Some("confirm") => notebook.confirm_delete(),
+                        Some("cancel") => notebook.cancel_delete(),
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
         match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => {
                 if let Some((kind, mut value)) = prompt.take() {
@@ -466,6 +495,7 @@ pub fn run() -> Result<()> {
                     }
                     KeyCode::Home => notebook.preview_top = 0,
                     KeyCode::Enter | KeyCode::Char('e' | 'E') => notebook.begin_edit()?,
+                    KeyCode::Delete => notebook.request_delete(),
                     KeyCode::Char('n' | 'N') => prompt = Some(("new".into(), String::new())),
                     KeyCode::Char('/') | KeyCode::Char('f')
                         if !k.modifiers.contains(KeyModifiers::CONTROL) =>
@@ -497,6 +527,7 @@ pub fn run() -> Result<()> {
                     if let Some(a) = builtin::action_at(m.column, actions) {
                         match a {
                             "edit" => notebook.begin_edit()?,
+                            "delete" => notebook.request_delete(),
                             "save" => notebook.save_inline(false),
                             "undo" | "redo" => {
                                 if let Some(editor) = &mut notebook.editor {

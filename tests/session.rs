@@ -268,6 +268,65 @@ fn shell_output_mouse_arrangement_and_reconnect() {
 }
 
 #[test]
+fn title_bar_minimize_preserves_program_and_restores_from_shelf() {
+    let s = Session::start(&["/bin/sh"]);
+    let mut client = s.attach(100, 30);
+    client.until("[_]");
+    client.text("printf '\\033]2;Minimize test\\007STILL_RUNNING\\n'");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("Minimize test");
+    client.until("STILL_RUNNING");
+    let original = s.ctl("list", &[])[0].clone();
+    let click = |client: &mut Client, column, row| {
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            client.event(Event::Mouse(MouseEvent {
+                kind,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }));
+        }
+    };
+    // Every cell of the button works, including while the window is zoomed.
+    for offset in 0..3 {
+        if offset == 1 {
+            let r = s.ctl("list", &[])[0]["rect"].clone();
+            click(
+                &mut client,
+                (r["x"].as_u64().unwrap() + r["w"].as_u64().unwrap() - 3) as u16,
+                r["y"].as_u64().unwrap() as u16,
+            );
+            client.until("[↙]");
+        }
+        let before = s.ctl("list", &[])[0].clone();
+        let r = &before["rect"];
+        click(
+            &mut client,
+            (r["x"].as_u64().unwrap() + r["w"].as_u64().unwrap() - 7 + offset) as u16,
+            r["y"].as_u64().unwrap() as u16,
+        );
+        client.until("Minimize test]");
+        let shelved = s.ctl("list", &[]);
+        assert_eq!(shelved.as_array().unwrap().len(), 1);
+        assert_eq!(shelved[0]["shelved"], true);
+        assert_eq!(shelved[0]["pid"], original["pid"]);
+        click(&mut client, 2, 28);
+        client.until("[_]");
+        client.until("STILL_RUNNING");
+        let restored = s.ctl("list", &[]);
+        assert_eq!(restored[0]["shelved"], false);
+        assert_eq!(restored[0]["rect"], before["rect"]);
+        assert_eq!(restored[0]["pid"], original["pid"]);
+    }
+    client.text("printf 'RESTORED_OK\\n'");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("RESTORED_OK");
+}
+
+#[test]
 fn menus_keyboard_resize_and_multi_client_minimum() {
     let s = Session::start(&["/bin/sh"]);
     let mut large = s.attach(120, 40);
@@ -686,7 +745,7 @@ fn live_themes_repaint_existing_components_and_all_clients_without_restarting() 
     };
     s.ctl("theme.set", &["amber"]);
     client.until_render("amber desktop and editor", |screen| {
-        cell_is(screen, 0, 0, 0, 3) && cell_is(screen, ex, ey, 14, 0)
+        cell_is(screen, 0, 0, 0, 11) && cell_is(screen, ex, ey, 14, 0)
     });
     second.until_render("second client's amber editor", |screen| {
         cell_is(screen, ex, ey, 14, 0)
@@ -708,6 +767,21 @@ fn live_themes_repaint_existing_components_and_all_clients_without_restarting() 
     client.until_render("green browser and background editor", |screen| {
         cell_is(screen, bx, by, 10, 0) && cell_is(screen, ex, ey, 10, 0)
     });
+    // Each new palette reaches both clients and already-running bundled apps.
+    for (id, fg, bg) in [
+        ("ocean", 15, 4),
+        ("plum", 15, 5),
+        ("forest", 15, 0),
+        ("burgundy", 14, 0),
+        ("ice", 0, 15),
+        ("slate", 15, 0),
+    ] {
+        s.ctl("theme.set", &[id]);
+        client.until_render(id, |screen| cell_is(screen, ex, ey, fg, bg));
+        second.until_render(id, |screen| cell_is(screen, ex, ey, fg, bg));
+        let saved = fs::read_to_string(s.root.join("config/saumux/config.toml")).unwrap();
+        assert!(saved.contains(&format!("theme = \"{id}\"")));
+    }
     let after = s.ctl("list", &[]);
     assert_eq!(after[1]["pid"], editor["pid"]);
     assert_eq!(after[2]["pid"], browser["pid"]);
@@ -744,16 +818,17 @@ fn theme_picker_keyboard_mouse_and_configuration_reload() {
     client.key(KeyCode::Down, KeyModifiers::NONE);
     client.key(KeyCode::Enter, KeyModifiers::NONE);
     client.until_render("amber menu bar", |screen| {
-        screen.cell(0, 0).unwrap().bgcolor() == vt100::Color::Idx(3)
+        screen.cell(0, 0).unwrap().bgcolor() == vt100::Color::Idx(11)
     });
     assert_eq!(current(&s.ctl("theme.list", &[])), "amber");
     client.key(KeyCode::Char('t'), KeyModifiers::ALT);
     client.until("Colour themes");
-    // At 100x30 the 62x9 picker starts at (19,10); Paper is row six.
+    // At 100x30 the 62x15 picker starts at (19,7); Paper is row six.
+    // At 100x30 the 62x18 picker (15 themes) starts at (19,6); Paper is row six.
     client.event(Event::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: 22,
-        row: 16,
+        row: 12,
         modifiers: KeyModifiers::NONE,
     }));
     client.until_render("paper desktop", |screen| {
@@ -761,7 +836,28 @@ fn theme_picker_keyboard_mouse_and_configuration_reload() {
     });
     assert_eq!(current(&s.ctl("theme.list", &[])), "paper");
     s.ctl("theme.next", &[]);
+    assert_eq!(current(&s.ctl("theme.list", &[])), "ocean");
+    // The expanded list scrolls to its last entry on a short host. Hit testing
+    // must use the same offset as rendering, and cycling must still wrap.
+    client.event(Event::Resize(100, 12));
+    client.key(KeyCode::Char('t'), KeyModifiers::ALT);
+    client.key(KeyCode::End, KeyModifiers::NONE);
+    client.until("Tokyo");
+    // Tokyo (last theme) lands at row 8 when the short picker shows 7 items at end.
+    client.event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 22,
+        row: 8,
+        modifiers: KeyModifiers::NONE,
+    }));
+    client.until_render("tokyo menu bar", |screen| {
+        screen.cell(0, 0).unwrap().bgcolor() == vt100::Color::Idx(8)
+            && !screen.contents().contains("Colour themes")
+    });
+    assert_eq!(current(&s.ctl("theme.list", &[])), "tokyo");
+    s.ctl("theme.next", &[]);
     assert_eq!(current(&s.ctl("theme.list", &[])), "borland");
+    client.event(Event::Resize(100, 30));
     let directory = s.root.join("config/saumux");
     fs::create_dir_all(&directory).unwrap();
     fs::write(
@@ -877,8 +973,47 @@ fn project_agent_launch_attention_hooks_and_acknowledgement() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    client.until("!1 agents Alt+a");
-    client.key(KeyCode::Char('a'), KeyModifiers::ALT);
+    client.until("!1 agents Ctrl+g");
+    client.until_render(
+        "attention beside the top clock on another workspace",
+        |screen| {
+            let row: String = (0..120)
+                .filter_map(|x| screen.cell(0, x))
+                .map(|c| c.contents())
+                .collect();
+            row.contains("!1") && row.trim_end().chars().rev().take(5).any(|c| c == ':')
+        },
+    );
+    let alert_x = (0..120)
+        .find(|&x| {
+            client
+                .screen
+                .screen()
+                .cell(0, x)
+                .is_some_and(|c| c.contents() == "!")
+        })
+        .unwrap();
+    // Clicking the clock itself does not open the attention dialog.
+    client.event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 117,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    client.drain();
+    assert!(
+        !client
+            .screen
+            .screen()
+            .contents()
+            .contains("Agent attention")
+    );
+    client.event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: alert_x,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
     client.until("Agent attention");
     client.until("Permission needed");
     client.key(KeyCode::Enter, KeyModifiers::NONE);
@@ -905,8 +1040,8 @@ fn project_agent_launch_attention_hooks_and_acknowledgement() {
     );
     s.ctl("agent.notify", &["waiting", "--window", &id]);
     s.ctl("window.shelve", &[]);
-    client.until("!1 agents Alt+a");
-    client.key(KeyCode::Char('a'), KeyModifiers::ALT);
+    client.until("!1 agents Ctrl+g");
+    client.key(KeyCode::Char('g'), KeyModifiers::CONTROL);
     client.until("Agent attention");
     client.key(KeyCode::Enter, KeyModifiers::NONE);
     client.until("INPUT_RECEIVED");
@@ -932,7 +1067,7 @@ fn agent_prompt_detection_and_osc_notifications_are_visual_only() {
     let mut client = s.attach(110, 32);
     client.until("Projects");
     let id = s.ctl("agent.start", &["test"])["id"].to_string();
-    client.until("!1 agents Alt+a");
+    client.until("!1 agents Ctrl+g");
     let list = s.ctl("list", &[]);
     let agent = list
         .as_array()
@@ -941,7 +1076,7 @@ fn agent_prompt_detection_and_osc_notifications_are_visual_only() {
         .find(|w| w["id"].as_u64() == id.parse().ok())
         .unwrap();
     assert_eq!(agent["agent"]["notice"]["possible"], true);
-    client.key(KeyCode::Char('a'), KeyModifiers::ALT);
+    client.key(KeyCode::Char('g'), KeyModifiers::CONTROL);
     client.until("May need input:");
     client.key(KeyCode::Esc, KeyModifiers::NONE);
     client.text("y");
@@ -1185,7 +1320,7 @@ fn web_client_shares_desktop_input_mouse_themes_and_survives_disconnect() {
     s.ctl("theme.set", &["amber"]);
     let mut tui = s.attach(100, 30);
     tui.until_render("shared amber", |s| {
-        s.cell(0, 0).unwrap().bgcolor() == vt100::Color::Idx(3)
+        s.cell(0, 0).unwrap().bgcolor() == vt100::Color::Idx(11)
     });
     web_send(&mut browser, json!({"type":"detach"}));
     drop(browser);
@@ -1265,9 +1400,122 @@ fn modified_enter_reaches_program_distinctly_from_submit_in_tui_and_web() {
 }
 
 #[test]
+fn notes_delete_confirms_keyboard_and_mouse_and_refreshes_filtered_list() {
+    let s = Session::start(&["/bin/sh"]);
+    let dir = s.root.join("data/saumux");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("notes.txt"), "legacy").unwrap();
+    fs::write(
+        dir.join("Alpha.md"),
+        "# Alpha\n\n**bold** and *italic*\n\n~~old~~\n\n| Item | Value |\n|---|---|\n| Release | 7 |",
+    )
+    .unwrap();
+    fs::write(dir.join("Beta.md"), "# Beta\nkeep me").unwrap();
+    let mut client = s.attach(120, 36);
+    client.until("Apps");
+    let id = s.ctl("notes.open", &[])["id"].as_u64().unwrap();
+    client.until("NOTES · 3");
+    client.key(KeyCode::Down, KeyModifiers::NONE);
+    client.until("Alpha.md");
+    client.until("bold and italic");
+    client.until("Release");
+    client.until_render("italic and strike survive the application PTY", |screen| {
+        (0..36).any(|y| (0..120).any(|x| screen.cell(y, x).is_some_and(|c| c.italic())))
+            && screen.contents().contains('\u{336}')
+    });
+    client.key(KeyCode::Delete, KeyModifiers::NONE);
+    client.until("Delete Alpha.md?");
+    assert!(dir.join("Alpha.md").exists());
+    // Navigation and content clicks cannot change the captured deletion target.
+    client.key(KeyCode::Down, KeyModifiers::NONE);
+    client.key(KeyCode::Esc, KeyModifiers::NONE);
+    client.until("Deletion cancelled");
+    assert!(dir.join("Alpha.md").exists());
+    client.key(KeyCode::Delete, KeyModifiers::NONE);
+    client.until("Delete Alpha.md?");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("Note deleted");
+    client.until("NOTES · 2");
+    assert!(!dir.join("Alpha.md").exists());
+    assert_eq!(
+        fs::read_to_string(dir.join("Beta.md")).unwrap(),
+        "# Beta\nkeep me"
+    );
+
+    // Mouse toolbar request, cancel and confirmation use the same modal state.
+    let windows = s.ctl("list", &[]);
+    let rect = &windows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["id"] == id)
+        .unwrap()["rect"];
+    let x = rect["x"].as_u64().unwrap() as u16 + 1;
+    let y = rect["y"].as_u64().unwrap() as u16 + 1;
+    let click = |client: &mut Client, column| {
+        client.event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: x + column,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        }))
+    };
+    click(&mut client, 22);
+    client.until("Delete Beta.md?");
+    // An external filesystem failure stays in the notebook and keeps other notes.
+    fs::remove_file(dir.join("Beta.md")).unwrap();
+    fs::create_dir(dir.join("Beta.md")).unwrap();
+    click(&mut client, 3);
+    client.until("Delete failed:");
+    assert!(dir.join("notes.txt").is_file());
+    fs::remove_dir(dir.join("Beta.md")).unwrap();
+    fs::write(dir.join("Beta.md"), "# Beta\nkeep me").unwrap();
+    click(&mut client, 22);
+    client.until("Delete Beta.md?");
+    click(&mut client, 21);
+    client.until("Deletion cancelled");
+    assert!(dir.join("Beta.md").exists());
+    click(&mut client, 22);
+    client.until("Delete Beta.md?");
+    click(&mut client, 3);
+    client.until("NOTES · 1");
+    assert!(!dir.join("Beta.md").exists());
+
+    // Deleting the last filtered match retains the active search.
+    client.key(KeyCode::Char('/'), KeyModifiers::NONE);
+    client.text("legacy");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("notes.txt");
+    client.key(KeyCode::Delete, KeyModifiers::NONE);
+    client.until("Delete notes.txt?");
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("NOTES · 0");
+    assert!(!dir.join("notes.txt").exists());
+    client.key(KeyCode::Delete, KeyModifiers::NONE);
+    client.until("No note selected");
+
+    // A deleted legacy scratchpad must not be silently recreated on reopening.
+    s.ctl("window.close", &[]);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while s.ctl("list", &[]).as_array().unwrap().len() != 1 {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(10));
+    }
+    client.drain();
+    s.ctl("notes.open", &[]);
+    client.until("NOTES · 0");
+    assert!(!dir.join("notes.txt").exists());
+}
+
+#[test]
 fn notes_inline_editor_persists_and_protects_unsaved_changes() {
     use std::os::unix::fs::PermissionsExt;
     let s = Session::start(&["/bin/sh"]);
+    // A legacy scratchpad stays editable without creating one on every launch.
+    fs::create_dir_all(s.root.join("data/saumux")).unwrap();
+    let legacy = s.root.join("data/saumux/notes.txt");
+    fs::write(&legacy, "").unwrap();
+    fs::set_permissions(&legacy, fs::Permissions::from_mode(0o600)).unwrap();
     let mut client = s.attach(110, 32);
     client.until("Apps");
     let id = s.ctl("notes.open", &[])["id"].as_u64().unwrap();
@@ -1304,6 +1552,7 @@ fn notes_inline_editor_persists_and_protects_unsaved_changes() {
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(10));
     }
+    client.until_screen("closed Notes frame", |text| !text.contains("NOTES ·"));
     let reopened = s.ctl("notes.open", &[])["id"].as_u64().unwrap();
     assert_ne!(id, reopened);
     client.until("NOTES · 1");

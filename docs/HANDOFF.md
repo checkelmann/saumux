@@ -78,7 +78,8 @@ for a queued job, unless the user asks otherwise.
 - Editor: UTF-8, search, undo/redo, cursor navigation, scrolling, Save/Save As,
   atomic writes, external-change detection, preserved line endings/permissions,
   and save/discard/cancel on close.
-- Themes: Borland, Norton, Amber, Phosphor, Midnight and Paper. View → Colour
+- Themes: Borland, Norton, Amber, Phosphor, Midnight, Paper, Ocean, Plum, Forest,
+  Burgundy, Ice and Slate. View → Colour
   theme / Alt+t, `theme.set`, `theme.next`, `theme.list`; all attached clients and
   already-open bundled applications update without restarting or losing state.
 
@@ -89,7 +90,7 @@ The implementation notes map modules to responsibilities and list resource bound
   literal-argument PTY launches, custom/disabled agents in TOML, direct menu entries.
 - Projects: persisted canonical directory bookmarks, project agent/shell/browser/
   editor launch dialog, bookmark-only removal and shared cross-session storage.
-- Visual agent notices: title/shelf highlighting, clickable badge and Alt+a
+- Visual agent notices: title/shelf highlighting, clickable badge and Ctrl+g
   attention list across workspaces; explicit hooks/OSC/BEL plus best-effort English
   prompt detection. No sound, automatic logins, permission changes or provider
   configuration edits. Alt+p opens saved projects. See README for hook API/limits.
@@ -135,13 +136,16 @@ no real agent or provider API is used. This is not full child kitty-protocol sup
   paged multi-column core grid. Its axes count samples, including manual refresh.
   Keep presentation independent of sampling and preserve pause during resize/theme
   changes. CPU data must remain real; empty/partial history is not fabricated.
-- `apps.rs` owns monitor/clock and prepares the legacy notes scratchpad;
-  `notes.rs` owns the Markdown notebook and inline editor state. Note edits use
-  the shared editor engine and retain unsaved-change protection. New notes are private and files are shared
+- `apps.rs` owns monitor/clock; `notes.rs` owns the Markdown notebook, deletion
+  confirmation and inline editor state. `notes_markdown.rs` owns parsed preview
+  layout and rendering. Notes launch no longer creates a legacy scratchpad.
+  Note edits use the shared editor engine and retain unsaved-change protection.
+  New notes are private and files are shared
   across sessions with the editor's external-change checks. Enter/E or clicking
   the reading pane edits in place; Ctrl+S saves and Esc returns to preview with
-  save/discard/cancel protection. Isolate XDG_DATA_HOME in tests. Preview supports
-  headings, basic lists, task checkboxes and block quotes.
+  save/discard/cancel protection. Isolate XDG_DATA_HOME in tests. Preview uses
+  pulldown-cmark for CommonMark plus tables, tasks, strikethrough and footnotes.
+  HTML remains literal; images show labeled paths rather than loading resources.
 - `app.rs` owns window-manager state and composition; `render.rs` owns cells,
   widths, attributes and ANSI differences. Preserve wide-character clipping and
   whole-glyph cleanup when overlapping either half of a wide character.
@@ -216,10 +220,20 @@ uses an isolated runtime and checks rendering/input, dragging, theme changes,
 HTTP clipboard fallback, dialogs, resize, reconnect/refresh, offline assets,
 modified Enter input, app launch/controls, Notes save/private permissions and
 live recolouring of paused widgets. Monitor snapshot checks cover scaled chart
-axes, paged high core counts, all six palettes and tiny host sizes. The controlling-PTY test also checks host
+axes, paged high core counts, all built-in palettes and tiny host sizes. The controlling-PTY test also checks host
 enhancement push/pop and exact forwarded Shift+Enter bytes. The four native
 release targets remain covered by CI; these local results do not
 establish the status of a later CI run.
+
+Additional-theme validation (2026-11-11): expanded to twelve palettes. Formatting,
+strict Clippy, all 20 unit tests, 24 of 25 integration tests, release build and
+controlling-PTY restoration passed. Theme checks cover all six new palettes in
+already-open editors across two clients, saved defaults, picker scrolling/mouse
+selection on a short host and cycling wraparound. The remaining Notes integration
+test times out waiting for `Markdown edit` after reopening; the same failure was
+reproduced from unchanged HEAD in an isolated checkout. The optional Chromium
+smoke check could not run because the Playwright Chromium executable is absent.
+The local release binary was rebuilt; existing session servers keep their code.
 
 Three CI issues already fixed must not be reintroduced:
 
@@ -250,6 +264,60 @@ node tests/browser/smoke.cjs target/debug/saumux
 Browser CI runs separately through `browser.yml`; tag publication requires both
 it and the four native builds. Use `SAUMUX_TEST_SCREENSHOT=/tmp/saumux-web.png` to
 capture the fixture's desktop. Never test against a live user's web/session ports.
+
+Theme contrast audit (2026-11-12): all twelve palettes now have at least 4.5:1
+contrast for every text role against the bundled browser's ANSI palette, guarded
+by a regression test tied to `web/app.js`. Forest titles/selection/status and
+Phosphor mnemonics use black on green. Weak coloured mnemonics on light menus
+use underlined black; Borland/Paper shortcuts and Paper inactive titles use
+black. Amber menu/dialog surfaces and dim labels use bright yellow instead of
+brown. Custom host ANSI palettes still determine exact TUI shades. Formatting,
+strict Clippy, 21 unit tests, 24 of 25 integration tests and the release build
+passed. The remaining Notes test has the same previously documented
+`Markdown edit` timeout. The local release binary was rebuilt; running servers
+need a new session to load the updated palette definitions.
+
+Title-bar minimize button (2026-11-12): `[_]` beside zoom dispatches the shared
+`window.shelve` action in both TUI and web composition. It is shown when the frame
+is at least 12 cells wide; narrower frames retain their existing controls. Titles
+reserve its space, and hovering identifies the action. The isolated PTY regression
+checks all three button cells, zoomed windows, shelf-click restoration, retained
+geometry and unchanged process IDs. Formatting, strict Clippy, 21 unit tests and
+25 of 26 integration tests passed; Notes retains the documented `Markdown edit`
+timeout. The local release binary was rebuilt; existing session servers keep
+their current executable code.
+
+Notes deletion, Markdown preview and top-row attention (2026-11-12):
+Notes preview has a Delete toolbar action and Delete key, with a captured-file
+confirmation (Enter/click Delete permanently; Esc/click Cancel). Errors stay
+visible without closing Notes; success refreshes the filtered list and selection.
+Notes launch no longer creates `notes.txt`, so deleting the legacy scratchpad
+persists across reopening; existing scratchpads remain supported. Editing and
+unsaved-change protection are unchanged.
+
+`notes_markdown.rs` uses pulldown-cmark without HTML-output dependencies for
+CommonMark plus tables, task lists, strikethrough and footnotes. It renders styled,
+cell-width-wrapped text, aligned/wrapped tables, code, links and image references;
+scrolling counts rendered rows. HTML is literal, images are not loaded, links
+are not clickable, and code has no syntax highlighting. Shared styles now retain
+italics through the PTY; combining strokes preserve strikethrough because vt100
+has no SGR-9 cell attribute.
+
+A highlighted `!N` alert count now sits immediately before the top-row clock,
+including shelved agents and other workspaces. Click opens `agent.attention`;
+clock/session metadata no longer act as a broad click target. On narrow hosts,
+metadata yields to the badge/clock and clipped menu labels are not clickable.
+There is no automatic focus/open on notification. Detection still requires an
+agent-tagged window and either an explicit notification or a recognized prompt.
+
+Validation: formatting, strict Clippy, 25 unit tests, all 27 integration tests,
+release build, controlling-PTY restoration, release helper tests and real Chromium
+smoke passed on macOS. New checks cover delete cancellation/confirmation by
+keyboard and mouse, filtered/last-note deletion, filesystem errors, legacy deletion
+across reopening, Markdown styles through a real PTY and top badge click targeting
+from another workspace. The former Notes reopen failure was a stale-screen wait:
+the test now waits for the old frame to disappear before reopening. The rebuilt
+`target/release/saumux` includes these changes; running servers retain their code.
 
 ## Known gaps and useful next work
 
@@ -302,3 +370,15 @@ create and push the matching new annotated version tag. v0.1.0 is already taken.
 If publication fails after draft creation, inspect that draft before rerunning;
 do not move a published tag to work around an error. Build caches and runner
 capacity affect duration, especially on macOS; they do not justify skipping tests.
+
+Agent attention shortcut (2026-11-12): the shared default is now Ctrl+g
+(Control on macOS), replacing Alt+a so iTerm2 and other legacy terminals need
+no Option/Meta configuration. Menus, alert badges, README and the web Attention
+toolbar reflect this. The toolbar forwards its control modifier explicitly.
+The binding remains configurable through `[keys]`; Ctrl+g is reserved from child
+programs by default. Existing servers keep their bindings; use a new session or
+configure `"Ctrl+g" = "agent.attention"` and reload in an existing session.
+Validation: formatting, strict Clippy, all 25 unit and 27 integration tests,
+the controlling-PTY test with a literal Ctrl+G byte (debug and release), and real
+Chromium including the Attention toolbar and Ctrl+g passed. The release binary
+was rebuilt; existing sessions were left running.

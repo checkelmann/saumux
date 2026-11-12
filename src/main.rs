@@ -12,6 +12,7 @@ mod gpm;
 mod input;
 mod monitor_view;
 mod notes;
+mod notes_markdown;
 mod projects;
 mod protocol;
 mod render;

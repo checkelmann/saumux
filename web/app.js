@@ -206,7 +206,7 @@
   });
   document.getElementById("reconnect").onclick = connect;
   document.querySelectorAll("[data-key]").forEach(button => {
-    button.onclick = () => { send({ type: "key", key: button.dataset.key, alt: button.hasAttribute("data-alt") }); term.focus(); };
+    button.onclick = () => { send({ type: "key", key: button.dataset.key, ctrl: button.hasAttribute("data-ctrl"), alt: button.hasAttribute("data-alt") }); term.focus(); };
   });
   window.addEventListener("pagehide", () => socket?.close());
   connect();

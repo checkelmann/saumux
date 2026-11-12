@@ -76,6 +76,10 @@ class ClientTerminalTest(unittest.TestCase):
                 self.assertFalse(termios.tcgetattr(slave)[3] & termios.ICANON)
                 os.write(master, b"printf 'CLIENT_PTY_OK\\n'\r")
                 read_until(master, b"CLIENT_PTY_OK")
+                # A plain Ctrl+G byte must open attention without Option/Meta setup.
+                os.write(master, b"\x07")
+                read_until(master, b"Agent attention")
+                os.write(master, b"\x1b")
                 record = Path(directory) / "recorded-key"
                 recorder = "import os,sys,tty,time; from pathlib import Path; tty.setraw(0); p=Path(sys.argv[1]); p.with_suffix('.ready').write_text('ready'); data=b''\nwhile len(data)<7: data+=os.read(0,7-len(data))\np.with_suffix('.hex').write_text(data.hex()); time.sleep(60)"
                 control("window.new", "--", "python3", "-u", "-c", recorder, str(record))

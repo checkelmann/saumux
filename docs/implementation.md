@@ -13,9 +13,9 @@ and optional `make browser`).
 
 - `browser.rs`, `editor.rs`, `builtin.rs`: bundled terminal applications with
   shared retro rendering, file navigation, text editing and save dialogs.
-- `apps.rs`: live system monitor, local/UTC digital clock and legacy scratchpad
-  storage. `notes.rs` provides the Markdown notebook and preview; edits use the
-  existing protected editor.
+- `apps.rs`: live system monitor and local/UTC digital clock. `notes.rs` owns
+  the Markdown notebook, deletion confirmation and inline editing through the
+  protected editor. `notes_markdown.rs` renders parsed Markdown into themed cells.
 - `monitor_view.rs`: responsive monitor layout, scaled Braille CPU line chart,
   thin meters and paged core grid, rendered from a sampling-independent snapshot.
 - `window.rs`: one portable-pty per program, vt100 cell buffer, 10,000 lines of
@@ -56,14 +56,17 @@ recorded in Cargo.lock and each upstream package.
 ## Appearance
 
 The original two-colour requirement was removed. `theme.rs` defines semantic
-roles for six 16-colour palettes: Borland, Norton, Amber, Phosphor, Midnight and
-Paper. They cover desktop surfaces, menus, focus, buttons, scroll bars and bundled
-applications. View → Colour theme (Alt+t), `theme.set` and `theme.next` change the
+roles for twelve 16-colour palettes: Borland, Norton, Amber, Phosphor, Midnight,
+Paper, Ocean, Plum, Forest, Burgundy, Ice and Slate. They cover desktop surfaces,
+menus, focus, buttons, scroll bars and bundled applications. View → Colour theme (Alt+t), `theme.set` and `theme.next` change the
 current session immediately and persist `look.theme` for future sessions.
 The compositor sends
 standard/bright ANSI sequences for these colours; the terminal palette determines
 the exact shades. Program colour output is preserved by default. Default ink and
 paper follow the active theme; explicit host/hex overrides take precedence.
+Every text role is checked for at least 4.5:1 contrast against the bundled web
+palette. Light menu surfaces use underlined black mnemonics where coloured ink
+would lose contrast. Custom host ANSI palettes can change the effective contrast.
 
 The server publishes the selected theme to a mode-0600 `<session>.theme` sidecar
 in the private socket directory, using an atomic rename. Bundled applications
@@ -115,7 +118,7 @@ resets the CPU baseline. Totals reflect the OS view rather than a promised
 container/cgroup quota view. There is no process list.
 
 The monitor uses dedicated `monitor_*` semantic roles in `theme.rs`: a dark,
-high-contrast surface for the retro palettes and a light surface for Paper.
+high-contrast surface for the retro palettes and light surfaces for Paper and Ice.
 CPU/RAM/swap percentages, thin line meters and detail columns stay aligned.
 The CPU chart rasterizes connected sample points into 2×4 Braille subcells, on a
 fixed 0–100% scale. Its axis covers the last 60 readings, not wall-clock seconds:
@@ -128,7 +131,7 @@ Arrows, PgUp/PgDn, Home/End and wheel events scroll cores beyond the visible pag
 the heading identifies the visible range. Tiny windows retain a compact summary.
 Pause/Resume buttons have matching widths/hit regions, and the footer chooses
 hints that fit. Sampling and pause state remain independent of presentation.
-Renderer tests use deterministic snapshots across all six palettes, partial/empty
+Renderer tests use deterministic snapshots across all built-in palettes, partial/empty
 histories, high core counts and tiny sizes.
 
 Clock uses reentrant libc localtime/gmtime functions (with an inferred timestamp
@@ -140,10 +143,19 @@ through the existing sidecar/cache, even when the monitor is paused.
 Notes is a notebook window listing Markdown files in `$XDG_DATA_HOME/saumux/`
 (or `~/.local/share/saumux/`), plus the pre-existing `notes.txt` scratchpad.
 Create makes a private `.md` file with a heading; search matches titles and
-contents. The right pane renders headings, lists, checkboxes and quotes. Enter/E
+contents. The right pane uses pulldown-cmark (MIT) for CommonMark plus tables,
+task lists, strikethrough and footnotes. Styled runs wrap to terminal cell widths;
+scroll offsets count rendered rows. Tables wrap cells and retain alignment.
+Images show alt text/destinations; HTML stays literal and no resources are loaded.
+Shared styles preserve italics through the PTY; combining strokes carry
+strikethrough through vt100, which lacks an SGR-9 cell attribute. Enter/E
 or clicking the preview opens an inline editing state backed by the bundled
 editor engine. Esc returns to preview and prompts before losing unsaved changes.
-Existing scratchpad data remains in place. New files use mode 0600 and
+Delete is available only from preview and captures a file path in a modal
+confirmation with keyboard and mouse confirm/cancel controls. Filesystem errors
+stay in the notebook; success refreshes the filtered list and clamps selection.
+Existing scratchpads stay listed, but launch no longer creates `notes.txt`, so
+deleting the last note persists across reopening. New files use mode 0600 and
 the data directory mode 0700. Editing retains UTF-8, undo/search, atomic saves,
 external-change checks and save/discard/cancel protection.
 
@@ -156,6 +168,11 @@ point. `is_editor` covers both `__edit` and `__notes`; keep this contract so des
 close sends Ctrl+Q to protect dirty notes. Built-in colour roles are preserved
 even if the default program-output setting is mono. Layouts record their PTY
 commands/working directories, not unsaved text or runtime widget options.
+
+The top status group reserves a clickable alert count immediately before the
+clock, shared across workspaces and shelved windows. Rendering, hover help and
+mouse hit testing use the same layout. On narrow hosts metadata yields to the
+indicator/clock; clipped menu labels are not clickable. Alerts never auto-focus.
 
 Tests isolate XDG_DATA_HOME as well as runtime/config paths. They cover real
 monitor sampling, menu launch, mouse pause/resume, clock zone/format and theme
@@ -210,6 +227,11 @@ is emitted. `agent.notify` supports waiting/attention/done/working and requires 
 window ID, supplied by the CLI from `SAUMUX_WINDOW` for hooks. `SAUMUX_BIN` names
 the launching executable; `SAUMUX` chooses the session. These variables are
 inherited by child agent processes. No provider configuration is written.
+
+The shared catalog binds `agent.attention` to Ctrl+g in both TUI and browser.
+This uses a plain control byte in legacy terminals, avoiding macOS Option
+character mappings and terminal-specific Meta configuration. It is rebindable
+through the ordinary `[keys]` configuration.
 
 Notices survive focus, shelving, workspace changes and client disconnects. Actual
 forwarded key/paste/application-button input, explicit acknowledgement or a

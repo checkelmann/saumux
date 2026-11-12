@@ -60,6 +60,11 @@ struct Selection {
 struct ThemePicker {
     selected: usize,
 }
+struct TopBar {
+    x: u16,
+    text: String,
+    badge: Option<(u16, String)>,
+}
 #[derive(Serialize, Deserialize)]
 struct Layout {
     windows: Vec<LayoutWindow>,
@@ -347,8 +352,7 @@ impl App {
                     self.focus(id);
                     return Ok(json!({"id":id}));
                 }
-                let paths = if kind == "__notes" { vec![crate::apps::prepare_notes()?.to_str().context("notes path is not UTF-8")?.to_string()] } else { vec![] };
-                let id = self.new_window(crate::browser::launch_args(kind, &paths)?, None)?;
+                let id = self.new_window(crate::browser::launch_args(kind, &[])?, None)?;
                 if !self.compact() {
                     let window = self.windows.last_mut().unwrap();
                     let mut rect = window.rect;
@@ -947,16 +951,25 @@ impl App {
             }
             return Ok(());
         }
+        let top = self.top_bar("00:00");
         if y == 0
             && left
-            && crate::support::Support::pending(&self.windows) > 0
-            && x >= menu_start(MENUS.len())
+            && top
+                .badge
+                .as_ref()
+                .is_some_and(|(start, badge)| x >= *start && x < start + badge.len() as u16)
         {
             self.command("agent.attention", &[], client)?;
             return Ok(());
         }
         if y == 0 {
-            if left && let Some(index) = menu_at(x) {
+            if left
+                && x < top.x
+                && let Some(index) = menu_at(x)
+            {
+                if menu_start(index + 1) > top.x {
+                    return Ok(());
+                }
                 self.menu = if self.menu.as_ref().is_some_and(|m| m.index == index) {
                     None
                 } else {
@@ -1061,6 +1074,8 @@ impl App {
                     self.command("window.close", &[], client)?;
                 } else if x >= r.x + r.w - 4 {
                     self.command("window.zoom", &[], client)?;
+                } else if r.w >= 12 && x >= r.x + r.w - 7 {
+                    self.command("window.shelve", &[], client)?;
                 } else if self.last_title_click.is_some_and(|(wid, cid, t)| {
                     wid == id && cid == client && t.elapsed().as_millis() < 400
                 }) {
@@ -1308,8 +1323,11 @@ impl App {
                 3,
                 title_style.clone(),
             );
+            if r.w >= 12 {
+                grid.text(r.x + r.w - 7, r.y, "[_]", 3, title_style.clone());
+            }
             let title = format!(" {}{} ", if attention { "! " } else { "" }, w.title);
-            let available = r.w.saturating_sub(10);
+            let available = r.w.saturating_sub(if r.w >= 12 { 13 } else { 10 });
             let title_width = unicode_width::UnicodeWidthStr::width(title.as_str())
                 .min(available as usize) as u16;
             grid.text(
@@ -1443,7 +1461,15 @@ impl App {
             sx += width;
         }
         grid.fill(0, 0, self.cols, 1, " ", inverse.clone());
+        let seconds = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let top = self.top_bar(&local_clock(seconds));
         for (index, label) in MENUS.iter().enumerate() {
+            if menu_start(index + 1) > top.x {
+                break;
+            }
             grid.text(
                 menu_start(index),
                 0,
@@ -1456,28 +1482,9 @@ impl App {
                 },
             );
         }
-        let seconds = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        // localtime_r follows the server's local timezone.
-        let clock = local_clock(seconds);
-        let right = format!(" {}  {}/4  {} ", self.name, self.workspace + 1, clock);
-        let width = unicode_width::UnicodeWidthStr::width(right.as_str()) as u16;
-        let pending = crate::support::Support::pending(&self.windows);
-        let badge = format!(" !{pending} ");
-        let reserved = if pending > 0 { badge.len() as u16 } else { 0 };
-        if self.cols > menu_start(MENUS.len()) + width + reserved {
-            grid.text(self.cols - width, 0, &right, width, inverse.clone());
-        }
-        if pending > 0 && self.cols > menu_start(MENUS.len()) + reserved {
-            grid.text(
-                menu_start(MENUS.len()),
-                0,
-                &badge,
-                reserved,
-                theme.activity.clone(),
-            );
+        grid.text(top.x, 0, &top.text, self.cols - top.x, inverse.clone());
+        if let Some((x, badge)) = &top.badge {
+            grid.text(*x, 0, badge, badge.len() as u16, theme.activity.clone());
         }
         grid.fill(
             0,
@@ -1555,7 +1562,7 @@ impl App {
                 theme.status.clone(),
             );
         }
-        if pending > 0 {
+        if crate::support::Support::pending(&self.windows) > 0 {
             let banner = crate::support::Support::banner(&self.windows, &self.config);
             let width = (banner.len() as u16).min(self.cols);
             let x = self.cols.saturating_sub(width);
@@ -1880,6 +1887,13 @@ impl App {
             return "F10 menus".into();
         };
         if y == 0 {
+            if self
+                .top_bar("00:00")
+                .badge
+                .is_some_and(|(start, badge)| x >= start && x < start + badge.len() as u16)
+            {
+                return "Agents need attention · click to view".into();
+            }
             return "Click to open menu".into();
         }
         if y == self.rows.saturating_sub(1) {
@@ -1892,6 +1906,15 @@ impl App {
             .find(|w| w.workspace == self.workspace && !w.shelved && w.rect.contains(x, y))
         {
             if y == w.rect.y {
+                if x <= w.rect.x + 3 {
+                    return "Close window".into();
+                }
+                if x >= w.rect.x + w.rect.w - 4 {
+                    return "Zoom / restore window".into();
+                }
+                if w.rect.w >= 12 && x >= w.rect.x + w.rect.w - 7 {
+                    return "Minimize to shelf".into();
+                }
                 return "Drag title · double-click zoom".into();
             }
             if x == w.rect.x + w.rect.w - 1 {
@@ -1900,6 +1923,10 @@ impl App {
             return "Drag to select · middle-click paste".into();
         }
         "Right-click for window list".into()
+    }
+    fn top_bar(&self, clock: &str) -> TopBar {
+        let pending = crate::support::Support::pending(&self.windows);
+        top_bar(self.cols, &self.name, self.workspace, pending, clock)
     }
 }
 
@@ -2007,6 +2034,35 @@ fn current_cwd(w: &Window) -> PathBuf {
     }
     w.cwd.clone()
 }
+fn top_bar(cols: u16, name: &str, workspace: usize, pending: usize, clock: &str) -> TopBar {
+    use unicode_width::UnicodeWidthStr;
+    let mut badge = if pending > 0 {
+        format!(" !{pending} ")
+    } else {
+        String::new()
+    };
+    let mut suffix = format!(" {clock} ");
+    if badge.len() + suffix.len() > cols as usize {
+        suffix.clear();
+        badge = badge.trim().chars().take(cols as usize).collect();
+    }
+    let meta = format!(" {name}  {}/4 ", workspace + 1);
+    let prefix = if meta.width() + badge.len() + suffix.len() + menu_start(MENUS.len()) as usize
+        <= cols as usize
+    {
+        meta
+    } else {
+        String::new()
+    };
+    let text = format!("{prefix}{badge}{suffix}");
+    let x = cols.saturating_sub(text.width() as u16);
+    TopBar {
+        x,
+        badge: (pending > 0).then_some((x + prefix.width() as u16, badge)),
+        text,
+    }
+}
+
 fn local_clock(seconds: u64) -> String {
     // Infer the platform's time representation from localtime_r; libc's
     // explicit time_t alias is deprecated on musl during its time64 transition.
@@ -2045,5 +2101,30 @@ fn outline(grid: &mut Grid, r: Rect, ascii: bool, style: Style) {
         (r.x + r.w - 1, r.y + r.h - 1, br),
     ] {
         grid.put(x, y, c, 1, style.clone());
+    }
+}
+
+#[cfg(test)]
+mod top_bar_tests {
+    use super::*;
+    use unicode_width::UnicodeWidthStr;
+    #[test]
+    fn attention_stays_beside_clock_and_fits_narrow_hosts() {
+        for cols in [1, 2, 8, 12, 40, 60, 80, 120, 500] {
+            for pending in [0, 1, 64] {
+                let bar = top_bar(cols, "long 界 session", 3, pending, "08:15");
+                assert!(bar.x as usize + bar.text.width() <= cols as usize);
+                if pending > 0 {
+                    let (x, badge) = bar.badge.unwrap();
+                    assert!(badge.contains('!'));
+                    assert!(x >= bar.x && x as usize + badge.len() <= cols as usize);
+                    if cols >= 12 {
+                        assert!(bar.text.ends_with(&format!("{badge} 08:15 ")));
+                    }
+                } else {
+                    assert!(bar.badge.is_none());
+                }
+            }
+        }
     }
 }

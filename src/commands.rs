@@ -42,7 +42,7 @@ pub const COMMANDS: &[Command] = &[
         name: "agent.attention",
         label: "Agent attention…",
         menu: 5,
-        shortcut: "Alt+a",
+        shortcut: "Ctrl+g",
     },
     Command {
         name: "agent.ack",

@@ -8,42 +8,9 @@ use anyhow::{Context, Result};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use std::{
     collections::VecDeque,
-    fs,
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt},
-    path::PathBuf,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use sysinfo::System;
-
-pub fn notes_path() -> Result<PathBuf> {
-    let root = match std::env::var_os("XDG_DATA_HOME") {
-        Some(path) if !path.is_empty() && PathBuf::from(&path).is_absolute() => PathBuf::from(path),
-        _ => PathBuf::from(
-            std::env::var_os("HOME").context("HOME or XDG_DATA_HOME is required for Notes")?,
-        )
-        .join(".local/share"),
-    };
-    Ok(root.join("saumux/notes.txt"))
-}
-pub fn prepare_notes() -> Result<PathBuf> {
-    let path = notes_path()?;
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(path.parent().unwrap())?;
-    match fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&path)
-    {
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(error) => return Err(error).context("creating notes file"),
-    }
-    crate::editor::Document::open(Some(&path))?;
-    Ok(path)
-}
 
 const MONITOR_ACTIONS: &[(&str, &str)] = crate::monitor_view::ACTIONS;
 const CLOCK_ACTIONS: &[(&str, &str)] = &[
