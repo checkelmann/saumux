@@ -32,7 +32,9 @@ and optional `make browser`).
 - `render.rs`: cell grid and ANSI differences, Unicode width/overlap handling,
   the Borland palette, optional monochrome content mapping and program colours.
 - `session.rs`: detached server, private Unix sockets, peer authentication,
-  bounded queues and per-client rendering state.
+  bounded queues and per-client rendering state. Empty sessions remain alive
+  after the last window closes; only explicit session end or a server signal
+  stops the server.
 - `client.rs`: raw mode, alternate screen, terminal events and synchronized
   output; restores terminal state on detach, error, panic and termination signals.
 - `web.rs`, `web/`: opt-in HTTP/WebSocket client bridge and embedded xterm.js

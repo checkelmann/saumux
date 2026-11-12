@@ -1,6 +1,6 @@
 # Agent handoff
 
-Last updated: **2026-11-11**. This file is the continuation entry point, not a
+Last updated: **2026-11-12**. This file is the continuation entry point, not a
 verbatim conversation transcript. Read it together with the README and implementation
 notes; inspect the current source and Git history before making changes.
 
@@ -64,6 +64,9 @@ for a queued job, unless the user asks otherwise.
 
 - Detached server/client, private Unix sockets, peer credentials, named sessions,
   `ls`, attach/detach, shared focus and smallest-client desktop sizing.
+- Closing the last window leaves an empty session/server running. The desktop
+  remains available to start another window; only explicit **End session** or a
+  server signal ends it. Empty saved layouts are allowed.
 - Multiple PTYs and vt100 emulators, overlap, focus, moving/resizing by outline,
   zoom, close, differential rendering, menus, clickable key bar, tile/cascade.
 - Scrollback, window-bounded copying, internal clipboard, OSC 52 export,

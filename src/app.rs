@@ -205,9 +205,6 @@ impl App {
         if self.selection.as_ref().is_some_and(|s| s.window == id) {
             self.selection = None;
         }
-        if self.windows.is_empty() {
-            self.running = false;
-        }
     }
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<()> {
         let was_compact = self.compact();

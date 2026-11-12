@@ -306,9 +306,6 @@ pub fn server(name: String, program: Vec<String>, layout: Option<PathBuf>) -> Re
     } else {
         app.new_window(App::shell(), None)?;
     }
-    if app.windows.is_empty() {
-        bail!("layout contains no windows");
-    }
     thread::spawn(move || {
         for (i, stream) in listener.incoming().enumerate() {
             match stream {

@@ -296,7 +296,7 @@ fn menus_keyboard_resize_and_multi_client_minimum() {
 }
 
 #[test]
-fn vim_alternate_screen_and_program_exit() {
+fn vim_exit_leaves_the_session_open_for_another_window() {
     if Command::new("vim")
         .arg("--version")
         .stdout(Stdio::null())
@@ -316,10 +316,19 @@ fn vim_alternate_screen_and_program_exit() {
     client.text(":q!");
     client.key(KeyCode::Enter, KeyModifiers::NONE);
     let deadline = Instant::now() + Duration::from_secs(5);
+    while !s.ctl("list", &[]).as_array().unwrap().is_empty() {
+        assert!(Instant::now() < deadline, "Vim did not close its window");
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(s.socket.exists(), "session stopped with its last window");
+    s.ctl("window.new", &["--", "/bin/sh"]);
+    assert_eq!(s.ctl("list", &[]).as_array().unwrap().len(), 1);
+    s.ctl("session.end", &["--confirm"]);
+    let deadline = Instant::now() + Duration::from_secs(5);
     while s.socket.exists() {
         assert!(
             Instant::now() < deadline,
-            "server did not exit after its last window closed"
+            "confirmed session end did not stop the server"
         );
         thread::sleep(Duration::from_millis(20));
     }
