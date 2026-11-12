@@ -53,9 +53,10 @@ The listener serves plain HTTP; TLS can be supplied by a reverse proxy.
 
 The browser displays the same server-composed character grid, with overlapping
 windows, mouse dragging/resizing, menus, function-key bar, themes, bundled
-browser/editor, agents, projects and attention indicators. All web assets are
-embedded in the executable; no CDN, Node installation or frontend build is needed
-to run it.
+browser/editor, agents, projects and attention indicators. A symbols-font fallback
+for Powerline/private-use prompt glyphs is embedded too, so the browser machine
+does not need a Nerd Font installed. All web assets are embedded in the executable;
+no CDN, Node installation or frontend build is needed to run it.
 
 ```sh
 saumux web --session work                    # share work, or create it

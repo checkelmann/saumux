@@ -162,6 +162,19 @@ async fn shutdown() {
     tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = terminate.recv() => {} }
 }
 async fn asset(uri: axum::http::Uri) -> HttpResponse {
+    if uri.path() == "/vendor/SymbolsNerdFontMono-Regular.ttf" {
+        return (
+            [
+                (header::CONTENT_TYPE, "font/ttf"),
+                (header::CACHE_CONTROL, "no-store"),
+                (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+                (header::REFERRER_POLICY, "no-referrer"),
+                (header::CONTENT_SECURITY_POLICY, "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"),
+            ],
+            include_bytes!("../web/vendor/SymbolsNerdFontMono-Regular.ttf").as_slice(),
+        )
+            .into_response();
+    }
     let (content_type, body) = match uri.path() {
         "/" => (
             "text/html; charset=utf-8",

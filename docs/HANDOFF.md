@@ -95,6 +95,8 @@ The implementation notes map modules to responsibilities and list resource bound
   browser and TUI share the same compositor/session. Embedded offline assets, mouse,
   keyboard, resize, clipboard fallback, reconnect and disconnect survival. No auth
   or built-in TLS, as explicitly requested. One chosen session per listener.
+  The browser also embeds the Nerd Fonts Symbols Mono fallback for Powerline and
+  private-use glyphs; retain its MIT notice when changing vendored assets.
 
 - Additional apps: Apps → System Monitor, Notes and Clock, also exposed through
   `monitor.open`, `notes.open`, `clock.open`. The monitor uses native sysinfo data,

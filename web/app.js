@@ -5,7 +5,7 @@
   const status = document.getElementById("status");
   const term = new Terminal({
     cols: 80, rows: 24, fontSize: 15,
-    fontFamily: '"SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace',
+    fontFamily: '"Saumux Symbols", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace',
     cursorBlink: false, scrollback: 0, allowProposedApi: false,
     macOptionIsMeta: true, minimumContrastRatio: 1,
     // Match the ordinary ANSI palette used by the TUI's semantic theme roles.
@@ -18,6 +18,10 @@
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(host);
+  // Force-load the private-use symbol fallback even when the active prompt has
+  // not drawn one yet, then repaint any glyphs rendered during the font request.
+  document.fonts.load('15px "Saumux Symbols"', "\uE0A0\uE0B0\uE0B1")
+    .then(() => term.refresh(0, term.rows - 1)).catch(() => {});
   let socket;
   let generation = 0;
   let connected = false;

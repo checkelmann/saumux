@@ -1,4 +1,11 @@
 :root { color-scheme: dark; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; background: #000; color: #ccc; }
+@font-face {
+  font-family: "Saumux Symbols";
+  src: url("/vendor/SymbolsNerdFontMono-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: normal;
+  font-display: block;
+}
 * { box-sizing: border-box; }
 body { margin: 0; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: none; padding: 5px 9px; background: #aaa; color: #000; border-bottom: 2px solid #555; font-size: 12px; }
