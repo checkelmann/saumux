@@ -7,6 +7,8 @@ pub struct Style {
     pub inverse: bool,
     pub bold: bool,
     pub underline: bool,
+    pub italic: bool,
+    pub strikethrough: bool,
     pub fg: Option<vt100::Color>,
     pub bg: Option<vt100::Color>,
 }
@@ -25,6 +27,8 @@ impl Style {
             inverse: cell.inverse(),
             bold: cell.bold() || (!color && fg != vt100::Color::Default),
             underline: cell.underline() || (!color && bg != vt100::Color::Default),
+            italic: cell.italic(),
+            strikethrough: false,
             fg: color.then_some(fg),
             bg: color.then_some(bg),
         }
@@ -36,6 +40,12 @@ impl Style {
         }
         if self.underline {
             s.push_str(";4");
+        }
+        if self.italic {
+            s.push_str(";3");
+        }
+        if self.strikethrough {
+            s.push_str(";9");
         }
         if self.inverse {
             s.push_str(";7");
@@ -169,6 +179,17 @@ impl Grid {
             }
         }
     }
+    pub fn blit(&mut self, src: &Grid, x_offset: u16, y_offset: u16) {
+        for y in 0..src.rows {
+            for x in 0..src.cols {
+                let i = y as usize * src.cols as usize + x as usize;
+                let cell = &src.cells[i];
+                if cell.width > 0 {
+                    self.put(x + x_offset, y + y_offset, &cell.text, cell.width, cell.style.clone());
+                }
+            }
+        }
+    }
     pub fn diff(&self, previous: Option<&Self>, look: &Look) -> Vec<u8> {
         let mut out = String::from("\x1b[?25l");
         let compatible = previous.filter(|p| p.cols == self.cols && p.rows == self.rows);
@@ -246,7 +267,7 @@ mod tests {
         grid.put(4, 0, "K", 1, theme.hotkey);
         let mut parser = vt100::Parser::new(2.try_into().unwrap(), 8.try_into().unwrap(), 0);
         parser.process(&grid.diff(None, &Look::default()));
-        for (x, fg, bg) in [(0, 6, 4), (1, 0, 7), (2, 14, 4), (3, 0, 6), (4, 1, 7)] {
+        for (x, fg, bg) in [(0, 6, 4), (1, 0, 7), (2, 14, 4), (3, 0, 6), (4, 0, 7)] {
             let cell = parser.screen().cell(0, x).unwrap();
             assert_eq!(cell.fgcolor(), vt100::Color::Idx(fg));
             assert_eq!(cell.bgcolor(), vt100::Color::Idx(bg));
