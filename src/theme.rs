@@ -458,9 +458,9 @@ impl Theme {
             ThemeId::Matrix => Self {
                 desktop: colors(10, 0),
                 frame: colors(10, 0),
-                inactive_title: colors(2, 0),  // dark green on black
-                title: colors(0, 10),           // black on bright green
-                menu: colors(0, 2),             // black on dark green
+                inactive_title: colors(2, 0), // dark green on black
+                title: colors(0, 10),         // black on bright green
+                menu: colors(0, 2),           // black on dark green
                 selected: colors(0, 10),
                 hotkey: mnemonic(2),
                 shortcut: colors(0, 2),
@@ -482,10 +482,10 @@ impl Theme {
                 monitor_grid: colors(2, 0),
             },
             ThemeId::Atari => Self {
-                desktop: colors(8, 7),          // dark-grey stipple on light grey
-                frame: colors(0, 7),            // black rules on grey
+                desktop: colors(8, 7), // dark-grey stipple on light grey
+                frame: colors(0, 7),   // black rules on grey
                 inactive_title: colors(0, 7),
-                title: colors(15, 4),           // white on blue, like classic GEM
+                title: colors(15, 4), // white on blue, like classic GEM
                 menu: colors(0, 7),
                 selected: colors(15, 4),
                 hotkey: mnemonic(7),
@@ -498,8 +498,8 @@ impl Theme {
                 activity: colors(15, 1),
                 dialog: colors(0, 7),
                 text: colors(0, 7),
-                editor: colors(0, 15),          // black on white, GEM document
-                directory: colors(4, 7),        // blue on grey
+                editor: colors(0, 15),   // black on white, GEM document
+                directory: colors(4, 7), // blue on grey
                 field: colors(0, 15),
                 warning: colors(15, 1),
                 monitor_text: colors(15, 0),
@@ -511,26 +511,26 @@ impl Theme {
                 desktop: colors(8, 0),
                 frame: colors(8, 0),
                 inactive_title: colors(7, 0),
-                title: colors(0, 13),           // black on bright magenta/pink
-                menu: colors(15, 8),            // white on dark grey
-                selected: colors(0, 14),        // black on bright cyan
-                hotkey: colors(14, 8),          // bright cyan on dark grey
+                title: colors(0, 13),    // black on bright magenta/pink
+                menu: colors(15, 8),     // white on dark grey
+                selected: colors(0, 14), // black on bright cyan
+                hotkey: colors(14, 8),   // bright cyan on dark grey
                 shortcut: colors(15, 8),
                 status: colors(0, 14),
                 key: colors(14, 8),
                 shadow: colors(0, 0),
                 scroll: colors(8, 0),
-                thumb: colors(13, 0),           // bright magenta thumb
+                thumb: colors(13, 0), // bright magenta thumb
                 activity: colors(0, 13),
                 dialog: colors(15, 8),
                 text: colors(15, 0),
                 editor: colors(15, 0),
-                directory: colors(14, 0),       // bright cyan directories
+                directory: colors(14, 0), // bright cyan directories
                 field: colors(15, 0),
                 warning: colors(15, 1),
                 monitor_text: colors(15, 0),
                 monitor_muted: colors(7, 0),
-                monitor_accent: colors(13, 0),  // bright magenta accent
+                monitor_accent: colors(13, 0), // bright magenta accent
                 monitor_grid: colors(8, 0),
             },
         };

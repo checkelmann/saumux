@@ -14,6 +14,22 @@ localhost listener, then ends only its own session. Validation: release build
 and real Chromium capture passed, with no page errors or external asset requests;
 live theme changes retained all PTY process IDs. No application behavior changed.
 
+CI repair and v0.2.0 preparation (2026-11-13): recent native runs stopped at
+rustfmt after the dual-panel browser changes; all four failed in run
+https://github.com/checkelmann/saumux/actions/runs/43410023792 while Chromium passed.
+Applied formatting and fixed six strict Clippy diagnostics in the browser.
+The htop regression still expected closing the last program to remove the session
+socket; it now waits for an empty window list and verifies session survival.
+Older Notes reopen failures are covered by the existing stale-frame wait fix.
+Rust 1.100 (matching current CI) formatting, strict Clippy and all 28 unit / 27
+integration tests passed on macOS. Linux Docker passed 29 unit / 27 integration
+tests with htop installed, plus controlling-PTY restoration. The macOS release
+build, PTY restoration, packaging helper tests and real Chromium smoke also passed.
+Version is bumped to 0.2.0; release notes are in `docs/releases/v0.2.0.md`.
+The user requested a draft followed immediately by publication once CI passes.
+Verify the exact version commit's four native jobs and Chromium, download those
+four archives, verify checksums, then draft and publish. Do not reuse v0.1.0.
+
 ## Product direction and accepted scope changes
 
 saumux is a terminal multiplexer presented as a text-mode desktop. Free,
@@ -45,9 +61,8 @@ saving with checkpointing program state.
 - Live theme switching was added later in commit
   `170733f5f6ce1e5cfb56033893e4535275b6a85e` on `main`. It is **not included in
   the published v0.1.0 archives**.
-- Cargo.toml still declares version `0.1.0` on this development snapshot. Before
-  the next requested release, choose/bump its version and update Cargo.lock.
-  Never move the existing v0.1.0 tag to include newer code.
+- Cargo.toml and Cargo.lock declare `0.2.0` for the requested next release.
+  Publication is pending validation; never move the existing v0.1.0 tag.
 - Agent discovery, saved projects, visual agent attention, the browser frontend
   and additional built-in apps are the current development feature set; they are
   not included in v0.1.0.

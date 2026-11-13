@@ -17,7 +17,9 @@ pub fn copy_entries(sources: &[PathBuf], dest: &Path) -> (usize, Vec<String>) {
         let result = if src.is_dir() {
             copy_dir(src, &target)
         } else {
-            fs::copy(src, &target).map(|_| ()).map_err(anyhow::Error::from)
+            fs::copy(src, &target)
+                .map(|_| ())
+                .map_err(anyhow::Error::from)
         };
         match result {
             Ok(()) => ok += 1,

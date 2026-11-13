@@ -185,7 +185,13 @@ impl Grid {
                 let i = y as usize * src.cols as usize + x as usize;
                 let cell = &src.cells[i];
                 if cell.width > 0 {
-                    self.put(x + x_offset, y + y_offset, &cell.text, cell.width, cell.style.clone());
+                    self.put(
+                        x + x_offset,
+                        y + y_offset,
+                        &cell.text,
+                        cell.width,
+                        cell.style.clone(),
+                    );
                 }
             }
         }

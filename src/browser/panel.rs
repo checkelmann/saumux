@@ -26,8 +26,7 @@ pub(super) struct Panel {
 
 impl Panel {
     pub fn new(path: &Path) -> Result<Self> {
-        let cwd =
-            fs::canonicalize(path).with_context(|| format!("opening {}", path.display()))?;
+        let cwd = fs::canonicalize(path).with_context(|| format!("opening {}", path.display()))?;
         let mut panel = Self {
             cwd,
             entries: vec![],
@@ -128,7 +127,11 @@ impl Panel {
     }
 
     pub fn toggle_mark(&mut self) {
-        if self.entries.get(self.selected).is_some_and(|e| e.name != "..") {
+        if self
+            .entries
+            .get(self.selected)
+            .is_some_and(|e| e.name != "..")
+        {
             if !self.marked.remove(&self.selected) {
                 self.marked.insert(self.selected);
             }
@@ -165,7 +168,11 @@ impl Panel {
                 .map(|e| e.path.clone())
                 .collect()
         } else if let Some(e) = self.entries.get(self.selected) {
-            if e.name != ".." { vec![e.path.clone()] } else { vec![] }
+            if e.name != ".." {
+                vec![e.path.clone()]
+            } else {
+                vec![]
+            }
         } else {
             vec![]
         }
@@ -202,22 +209,26 @@ impl Panel {
         grid.fill(0, 0, width, height, " ", theme.text.clone());
 
         // Row 0: current path
-        grid.text(0, 0, &self.cwd.display().to_string(), width, theme.text.clone());
+        grid.text(
+            0,
+            0,
+            &self.cwd.display().to_string(),
+            width,
+            theme.text.clone(),
+        );
 
         // Rows 1..height-2: file list
-        for (i, entry) in self
-            .entries
-            .iter()
-            .skip(self.top)
-            .take(visible)
-            .enumerate()
-        {
+        for (i, entry) in self.entries.iter().skip(self.top).take(visible).enumerate() {
             let idx = self.top + i;
             let is_selected = idx == self.selected;
             let is_marked = self.marked.contains(&idx);
 
             let row_style = if is_selected {
-                if active { theme.title.clone() } else { theme.selected.clone() }
+                if active {
+                    theme.title.clone()
+                } else {
+                    theme.selected.clone()
+                }
             } else {
                 theme.text.clone()
             };
@@ -242,10 +253,7 @@ impl Panel {
                 if entry.directory { "/" } else { "" }
             );
 
-            let size_str = entry
-                .size
-                .map(super::format_size)
-                .unwrap_or_default();
+            let size_str = entry.size.map(super::format_size).unwrap_or_default();
             let reserve: u16 = if width > 24 { 10 } else { 0 };
 
             let name_style = if is_selected {
@@ -265,7 +273,13 @@ impl Panel {
         }
 
         if self.entries.is_empty() {
-            grid.text(1, 1, "Empty directory", width.saturating_sub(2), theme.text.clone());
+            grid.text(
+                1,
+                1,
+                "Empty directory",
+                width.saturating_sub(2),
+                theme.text.clone(),
+            );
         }
 
         // Row height-1: status bar
@@ -314,8 +328,7 @@ mod tests {
 
     #[test]
     fn mark_toggle_and_mark_all() {
-        let root =
-            std::env::temp_dir().join(format!("sx-browser-mark-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("sx-browser-mark-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("a.txt"), b"x").unwrap();
         fs::write(root.join("b.txt"), b"x").unwrap();

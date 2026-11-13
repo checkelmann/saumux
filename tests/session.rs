@@ -509,10 +509,11 @@ fn htop_can_start_and_exit_inside_a_window() {
     client.until("Tasks:");
     client.key(KeyCode::Char('q'), KeyModifiers::NONE);
     let deadline = Instant::now() + Duration::from_secs(5);
-    while s.socket.exists() {
+    while !s.ctl("list", &[]).as_array().unwrap().is_empty() {
         assert!(Instant::now() < deadline, "htop did not exit");
         thread::sleep(Duration::from_millis(20));
     }
+    assert!(s.socket.exists(), "session stopped with its last window");
 }
 
 #[test]

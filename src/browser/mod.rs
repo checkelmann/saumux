@@ -6,10 +6,8 @@ use crate::{
     builtin::{self, Prompt, Surface},
     render::Grid,
 };
-use anyhow::{bail, Result};
-use crossterm::event::{
-    Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
-};
+use anyhow::{Result, bail};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use panel::Panel;
 use preview::PreviewOverlay;
 use std::path::{Path, PathBuf};
@@ -27,10 +25,20 @@ const ACTIONS: &[(&str, &str)] = &[
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Side { Left, Right }
+enum Side {
+    Left,
+    Right,
+}
 
 #[derive(Clone, Copy)]
-enum PromptKind { Location, Rename, Mkdir, Copy, Move, Delete }
+enum PromptKind {
+    Location,
+    Rename,
+    Mkdir,
+    Copy,
+    Move,
+    Delete,
+}
 
 struct PendingOp {
     kind: PromptKind,
@@ -60,10 +68,16 @@ impl DualBrowser {
     }
 
     fn active_panel(&self) -> &Panel {
-        match self.active { Side::Left => &self.left, Side::Right => &self.right }
+        match self.active {
+            Side::Left => &self.left,
+            Side::Right => &self.right,
+        }
     }
     fn active_panel_mut(&mut self) -> &mut Panel {
-        match self.active { Side::Left => &mut self.left, Side::Right => &mut self.right }
+        match self.active {
+            Side::Left => &mut self.left,
+            Side::Right => &mut self.right,
+        }
     }
     fn other_cwd(&self) -> PathBuf {
         match self.active {
@@ -85,8 +99,12 @@ impl DualBrowser {
         let half = width / 2;
         let right_w = width.saturating_sub(half + 1);
 
-        let left_grid = self.left.draw(half, panel_height, self.active == Side::Left);
-        let right_grid = self.right.draw(right_w, panel_height, self.active == Side::Right);
+        let left_grid = self
+            .left
+            .draw(half, panel_height, self.active == Side::Left);
+        let right_grid = self
+            .right
+            .draw(right_w, panel_height, self.active == Side::Right);
 
         grid.blit(&left_grid, 0, 1);
 
@@ -114,8 +132,10 @@ impl DualBrowser {
 
     fn start_pending(&mut self, kind: PromptKind) {
         let sources = self.active_panel().marked_paths();
-        if matches!(kind, PromptKind::Copy | PromptKind::Move | PromptKind::Delete)
-            && sources.is_empty()
+        if matches!(
+            kind,
+            PromptKind::Copy | PromptKind::Move | PromptKind::Delete
+        ) && sources.is_empty()
         {
             self.message = "Nothing selected".into();
             return;
@@ -170,7 +190,11 @@ impl DualBrowser {
                 if errors.is_empty() {
                     Ok(format!("Copied {ok} item(s)"))
                 } else {
-                    Ok(format!("Copied {ok}, {} error(s): {}", errors.len(), errors[0]))
+                    Ok(format!(
+                        "Copied {ok}, {} error(s): {}",
+                        errors.len(),
+                        errors[0]
+                    ))
                 }
             }
             PromptKind::Move => {
@@ -182,7 +206,11 @@ impl DualBrowser {
                 if errors.is_empty() {
                     Ok(format!("Moved {ok} item(s)"))
                 } else {
-                    Ok(format!("Moved {ok}, {} error(s): {}", errors.len(), errors[0]))
+                    Ok(format!(
+                        "Moved {ok}, {} error(s): {}",
+                        errors.len(),
+                        errors[0]
+                    ))
                 }
             }
             PromptKind::Delete => {
@@ -192,7 +220,11 @@ impl DualBrowser {
                 if errors.is_empty() {
                     Ok(format!("Deleted {ok} item(s)"))
                 } else {
-                    Ok(format!("Deleted {ok}, {} error(s): {}", errors.len(), errors[0]))
+                    Ok(format!(
+                        "Deleted {ok}, {} error(s): {}",
+                        errors.len(),
+                        errors[0]
+                    ))
                 }
             }
             PromptKind::Mkdir => {
@@ -233,11 +265,11 @@ impl DualBrowser {
             return;
         }
         let panel = self.active_panel();
-        if let Some(entry) = panel.entries.get(panel.selected) {
-            if !entry.directory {
-                self.preview = Some(PreviewOverlay::load(&entry.path.clone()));
-                return;
-            }
+        if let Some(entry) = panel.entries.get(panel.selected)
+            && !entry.directory
+        {
+            self.preview = Some(PreviewOverlay::load(&entry.path));
+            return;
         }
         self.message = "Select a file to preview".into();
     }
@@ -246,7 +278,11 @@ impl DualBrowser {
     fn action(&mut self, action: &str) -> Result<bool> {
         match action {
             "tab" => {
-                self.active = if self.active == Side::Left { Side::Right } else { Side::Left };
+                self.active = if self.active == Side::Left {
+                    Side::Right
+                } else {
+                    Side::Left
+                };
                 self.message = String::new();
             }
             "copy" => self.start_pending(PromptKind::Copy),
@@ -280,11 +316,15 @@ impl DualBrowser {
                         pv.scroll_down(visible);
                     }
                     KeyCode::PageUp => {
-                        for _ in 0..10 { pv.scroll_up(); }
+                        for _ in 0..10 {
+                            pv.scroll_up();
+                        }
                     }
                     KeyCode::PageDown => {
                         let visible = height.saturating_sub(8) as usize;
-                        for _ in 0..10 { pv.scroll_down(visible); }
+                        for _ in 0..10 {
+                            pv.scroll_down(visible);
+                        }
                     }
                     _ => {}
                 },
@@ -318,7 +358,9 @@ impl DualBrowser {
                     op.prompt.cursor = op.prompt.text.chars().count();
                     self.pending = Some(op);
                 }
-                _ => { self.pending = Some(op); }
+                _ => {
+                    self.pending = Some(op);
+                }
             }
             return Ok(false);
         }
@@ -360,8 +402,7 @@ impl DualBrowser {
                         }
                         KeyCode::Down => {
                             let p = self.active_panel_mut();
-                            p.selected =
-                                (p.selected + 1).min(p.entries.len().saturating_sub(1));
+                            p.selected = (p.selected + 1).min(p.entries.len().saturating_sub(1));
                         }
                         KeyCode::PageUp => {
                             let p = self.active_panel_mut();
@@ -371,8 +412,7 @@ impl DualBrowser {
                         KeyCode::PageDown => {
                             let p = self.active_panel_mut();
                             let page = height.saturating_sub(4) as usize;
-                            p.selected =
-                                (p.selected + page).min(p.entries.len().saturating_sub(1));
+                            p.selected = (p.selected + page).min(p.entries.len().saturating_sub(1));
                         }
                         KeyCode::Home => self.active_panel_mut().selected = 0,
                         KeyCode::End => {
@@ -380,9 +420,8 @@ impl DualBrowser {
                             p.selected = p.entries.len().saturating_sub(1);
                         }
                         KeyCode::Enter => {
-                            match self.active_panel_mut().open()? {
-                                true => self.message = "Opened in a new editor window".into(),
-                                false => {}
+                            if self.active_panel_mut().open()? {
+                                self.message = "Opened in a new editor window".into();
                             }
                         }
                         KeyCode::Backspace => self.active_panel_mut().up()?,
@@ -413,7 +452,9 @@ impl DualBrowser {
                     self.active = side;
                     let panel_row = mouse.row - 1; // row within panel grid
                     // Row 0 = path header, skip
-                    if panel_row == 0 { return Ok(false); }
+                    if panel_row == 0 {
+                        return Ok(false);
+                    }
                     let panel = self.active_panel_mut();
                     let index = panel.top + (panel_row as usize - 1);
                     if index < panel.entries.len() {
@@ -421,9 +462,8 @@ impl DualBrowser {
                             prev == index && t.elapsed() < Duration::from_millis(400)
                         }) {
                             panel.last_click = None;
-                            match panel.open()? {
-                                true => self.message = "Opened in a new editor window".into(),
-                                false => {}
+                            if panel.open()? {
+                                self.message = "Opened in a new editor window".into();
                             }
                         } else {
                             panel.selected = index;
@@ -462,7 +502,9 @@ pub fn run(path: &Path) -> Result<()> {
                 browser.right.cwd.display()
             ),
         )?;
-        let Some(event) = surface.event()? else { continue };
+        let Some(event) = surface.event()? else {
+            continue;
+        };
         let result = browser.handle_event(event, height, half);
         match result {
             Ok(true) => break,

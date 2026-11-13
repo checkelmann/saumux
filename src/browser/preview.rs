@@ -1,5 +1,8 @@
 use crate::render::Grid;
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 const MAX_READ: usize = 1024 * 1024; // 1 MB
 const MAX_LINES: usize = 500;
@@ -7,7 +10,12 @@ const HEX_BYTES: usize = 256;
 
 pub(super) enum PreviewContent {
     Text(Vec<String>),
-    Image { format: &'static str, width: u32, height: u32, file_size: u64 },
+    Image {
+        format: &'static str,
+        width: u32,
+        height: u32,
+        file_size: u64,
+    },
     Binary(Vec<u8>),
     Error(String),
 }
@@ -24,7 +32,11 @@ impl PreviewOverlay {
             Ok(c) => c,
             Err(e) => PreviewContent::Error(e.to_string()),
         };
-        Self { path: path.to_owned(), content, scroll: 0 }
+        Self {
+            path: path.to_owned(),
+            content,
+            scroll: 0,
+        }
     }
 
     pub fn scroll_up(&mut self) {
@@ -43,7 +55,7 @@ impl PreviewOverlay {
 
     pub fn draw(&self, grid: &mut Grid, term_width: u16, term_height: u16) {
         let theme = crate::theme::current();
-        let w = term_width.saturating_sub(4).min(80).max(10);
+        let w = term_width.saturating_sub(4).clamp(10, 80);
         let h = term_height.saturating_sub(4).max(4);
         let x = (term_width.saturating_sub(w)) / 2;
         let y = 2u16;
@@ -63,7 +75,13 @@ impl PreviewOverlay {
             PreviewContent::Text(lines) => {
                 for (i, line) in lines.iter().skip(self.scroll).take(inner_h).enumerate() {
                     let truncated: String = line.chars().take(inner_w as usize).collect();
-                    grid.text(x + 1, y + 1 + i as u16, &truncated, inner_w, theme.dialog.clone());
+                    grid.text(
+                        x + 1,
+                        y + 1 + i as u16,
+                        &truncated,
+                        inner_w,
+                        theme.dialog.clone(),
+                    );
                 }
                 // scroll indicator in footer
                 let total = lines.len();
@@ -71,7 +89,12 @@ impl PreviewOverlay {
                 grid.fill(x, y + h - 1, w, 1, " ", theme.status.clone());
                 grid.text(x, y + h - 1, &foot, w, theme.status.clone());
             }
-            PreviewContent::Image { format, width, height, file_size } => {
+            PreviewContent::Image {
+                format,
+                width,
+                height,
+                file_size,
+            } => {
                 let info = [
                     format!("  Format : {format}"),
                     format!("  Size   : {width}×{height} pixels"),
@@ -93,10 +116,22 @@ impl PreviewOverlay {
                         .map(|&b| if b.is_ascii_graphic() { b as char } else { '.' })
                         .collect();
                     let line = format!("{:04x}  {:<48}{}", i * 16, hex, ascii);
-                    grid.text(x + 1, y + 1 + i as u16, &line, inner_w, theme.dialog.clone());
+                    grid.text(
+                        x + 1,
+                        y + 1 + i as u16,
+                        &line,
+                        inner_w,
+                        theme.dialog.clone(),
+                    );
                 }
                 grid.fill(x, y + h - 1, w, 1, " ", theme.status.clone());
-                grid.text(x, y + h - 1, " Esc closes  (binary)", w, theme.status.clone());
+                grid.text(
+                    x,
+                    y + h - 1,
+                    " Esc closes  (binary)",
+                    w,
+                    theme.status.clone(),
+                );
             }
             PreviewContent::Error(msg) => {
                 grid.text(x + 1, y + 1, msg, inner_w, theme.warning.clone());
@@ -123,13 +158,20 @@ fn load_content(path: &Path) -> anyhow::Result<PreviewContent> {
 
     // Image detection first
     if let Some((format, w, h)) = detect_image(&bytes) {
-        return Ok(PreviewContent::Image { format, width: w, height: h, file_size });
+        return Ok(PreviewContent::Image {
+            format,
+            width: w,
+            height: h,
+            file_size,
+        });
     }
 
     // Binary check: null bytes in the first 1 KB
     let probe = bytes.len().min(1024);
     if bytes[..probe].contains(&0) {
-        return Ok(PreviewContent::Binary(bytes[..bytes.len().min(HEX_BYTES)].to_vec()));
+        return Ok(PreviewContent::Binary(
+            bytes[..bytes.len().min(HEX_BYTES)].to_vec(),
+        ));
     }
 
     // UTF-8 text
@@ -138,7 +180,9 @@ fn load_content(path: &Path) -> anyhow::Result<PreviewContent> {
             let lines: Vec<String> = text.lines().take(MAX_LINES).map(str::to_owned).collect();
             Ok(PreviewContent::Text(lines))
         }
-        Err(_) => Ok(PreviewContent::Binary(bytes[..bytes.len().min(HEX_BYTES)].to_vec())),
+        Err(_) => Ok(PreviewContent::Binary(
+            bytes[..bytes.len().min(HEX_BYTES)].to_vec(),
+        )),
     }
 }
 
@@ -176,20 +220,24 @@ fn jpeg_dimensions(data: &[u8]) -> Option<(u32, u32)> {
             break;
         }
         let marker = data[i + 1];
-        if matches!(marker, 0xc0 | 0xc1 | 0xc2) && i + 9 < data.len() {
+        if matches!(marker, 0xc0..=0xc2) && i + 9 < data.len() {
             let h = u16::from_be_bytes([data[i + 5], data[i + 6]]) as u32;
             let w = u16::from_be_bytes([data[i + 7], data[i + 8]]) as u32;
             return Some((w, h));
         }
         let len = u16::from_be_bytes([data[i + 2], data[i + 3]]) as usize;
-        if len < 2 { break; }
+        if len < 2 {
+            break;
+        }
         i += 2 + len;
     }
     None
 }
 
 fn webp_dimensions(data: &[u8]) -> Option<(u32, u32)> {
-    if data.len() < 30 { return None; }
+    if data.len() < 30 {
+        return None;
+    }
     if &data[12..16] == b"VP8 " {
         let w = (u16::from_le_bytes([data[26], data[27]]) & 0x3fff) as u32;
         let h = (u16::from_le_bytes([data[28], data[29]]) & 0x3fff) as u32;
@@ -226,7 +274,7 @@ mod tests {
 
         // BMP (DIB header: width at offset 18, height at 22)
         let mut bmp = vec![b'B', b'M'];
-        bmp.extend(std::iter::repeat(0u8).take(16)); // fill to offset 18
+        bmp.extend(std::iter::repeat_n(0u8, 16)); // fill to offset 18
         bmp.extend_from_slice(&640u32.to_le_bytes());
         bmp.extend_from_slice(&480u32.to_le_bytes());
         assert_eq!(detect_image(&bmp), Some(("BMP", 640, 480)));
