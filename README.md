@@ -14,8 +14,7 @@ and validation still needed before treating it as a daily driver.
 ![saumux desktop with overlapping System Monitor, project shell and Clock windows in the Borland theme](docs/screenshots/desktop.png)
 
 The desktop in the browser frontend, with real PTY windows and live system
-readings. Screenshots use sample files and notes from the development build on
-`main`; some features are newer than the published v0.1.0 release.
+readings. Screenshots use sample files and notes from v0.2.0.
 
 ## Build and run
 
@@ -164,6 +163,9 @@ Esc closes it without changing anything.
 | Burgundy | Wine-red frames with warm cream editor text |
 | Ice | Light cyan and white with blue accents |
 | Slate | Charcoal and silver with cyan titles |
+| Matrix | Green code-rain colours on black |
+| Atari | Light grey desktop inspired by Atari ST GEM |
+| Tokyo | Dark surfaces with magenta and cyan accents |
 
 Changes apply to the desktop, menus, frames, default terminal colours, and all
 open bundled editors/browsers within about 100 ms. Running programs keep their
@@ -363,12 +365,15 @@ Open **File → Browse files** (**Alt+b**) or **File → New text document** (**
 bundled in the saumux binary and run in regular PTY windows, with the same move,
 resize, shelf and detach behavior as shells.
 
-The browser lists directories first. Use arrows and Enter, or double-click, to
-open a folder or edit a file in a separate window. Backspace goes to the parent;
-`.` toggles hidden files; Ctrl+r refreshes; Ctrl+l changes location. Its toolbar
-also provides these actions by mouse. Ctrl+q closes the browser. The browser
-currently handles navigation and opening files; it has no delete, rename or copy
-operations.
+The browser has two directory panels; **Tab** switches between them. Use arrows
+and Enter, or double-click, to open a folder or edit a file in a separate window.
+Backspace goes to the parent; `.` toggles hidden files; Ctrl+l changes location.
+**Insert** or **Space** marks files, and Ctrl+a marks all. Ctrl+c copies, Ctrl+x
+moves, Ctrl+d deletes, Ctrl+n creates a directory and Ctrl+r renames. Copy/move
+prompts default to the other panel's directory; review the destination or deletion
+prompt before confirming. Ctrl+p previews text, image metadata or binary data;
+Esc closes the preview. The toolbar provides mouse actions. Ctrl+q closes the
+browser. Desktop shortcuts such as F6 still belong to the window manager.
 
 The editor supports UTF-8 text, mouse cursor placement, scrolling, tabs, search,
 undo/redo, Save and Save As. Its toolbar is clickable, and save actions are also
@@ -446,7 +451,7 @@ configuration leaves the existing configuration active.
 start = ["$SHELL"]
 
 [look]
-theme = "borland"     # use `saumux ctl theme.list` to list all twelve palettes
+theme = "borland"     # use `saumux ctl theme.list` to list all fifteen palettes
 ink = "theme"         # theme default; "default" uses the host; or "#RRGGBB"
 paper = "theme"       # theme default; "default" uses the host; or "#RRGGBB"
 content = "color"     # preserve program colours; optional "mono" maps attributes
@@ -508,16 +513,16 @@ macOS. Linux release executables use musl for static linking. Each archive
 contains `saumux`, documentation, the license and the optional terminfo entry.
 Downloads are accompanied by `SHA256SUMS`.
 
-v0.1.0 is already published. Live themes, agent/project support, the web frontend
-and the additional built-in apps require a newer build from `main`; they are
-not in the v0.1.0 downloads.
+v0.2.0 adds live themes, agent/project support, the web frontend, dual-panel file
+operations and additional built-in apps. See the [release notes](docs/releases/v0.2.0.md)
+for details. These features are not in the older v0.1.0 downloads.
 
 To publish the next version, update `version` in Cargo.toml, run `cargo check` to update
 Cargo.lock, commit and push those changes, then push the matching version tag:
 
 ```sh
-git tag -a v0.1.1 -m "saumux 0.1.1"
-git push origin v0.1.1
+git tag -a v0.2.1 -m "saumux 0.2.1"
+git push origin v0.2.1
 ```
 
 The release workflow rejects a tag that does not match Cargo.toml. All four builds
