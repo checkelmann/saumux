@@ -14,7 +14,7 @@ localhost listener, then ends only its own session. Validation: release build
 and real Chromium capture passed, with no page errors or external asset requests;
 live theme changes retained all PTY process IDs. No application behavior changed.
 
-CI repair and v0.2.0 preparation (2026-11-13): recent native runs stopped at
+CI repair and v0.2.0 release (2026-11-13): recent native runs stopped at
 rustfmt after the dual-panel browser changes; all four failed in run
 https://github.com/checkelmann/saumux/actions/runs/43410023792 while Chromium passed.
 Applied formatting and fixed six strict Clippy diagnostics in the browser.
@@ -25,10 +25,13 @@ Rust 1.100 (matching current CI) formatting, strict Clippy and all 28 unit / 27
 integration tests passed on macOS. Linux Docker passed 29 unit / 27 integration
 tests with htop installed, plus controlling-PTY restoration. The macOS release
 build, PTY restoration, packaging helper tests and real Chromium smoke also passed.
-Version is bumped to 0.2.0; release notes are in `docs/releases/v0.2.0.md`.
-The user requested a draft followed immediately by publication once CI passes.
-Verify the exact version commit's four native jobs and Chromium, download those
-four archives, verify checksums, then draft and publish. Do not reuse v0.1.0.
+Version is 0.2.0; release notes are in `docs/releases/v0.2.0.md` and on GitHub.
+Main checks passed: https://github.com/checkelmann/saumux/actions/runs/43411530097
+The tag workflow passed all four native targets and Chromium, verified checksums,
+created a draft and published it as authorized by the user:
+https://github.com/checkelmann/saumux/actions/runs/43411543043
+All four published archives were downloaded and their SHA256SUMS and contents
+verified; the downloaded macOS ARM executable reports `saumux 0.2.0`.
 
 ## Product direction and accepted scope changes
 
@@ -55,17 +58,19 @@ saving with checkpointing program state.
 
 - Public repository: https://github.com/checkelmann/saumux
 - Default branch: `main`.
-- Published release: https://github.com/checkelmann/saumux/releases/tag/v0.1.0
+- Latest published release: https://github.com/checkelmann/saumux/releases/tag/v0.2.0
+- `v0.2.0` points to `9f0342114d417f274e58d44348e69a69297632df`.
+  Its four binary archives and SHA256SUMS were downloaded and verified.
 - `v0.1.0` points to `14e81f20265f28dd1b4f968ff47e1887f02028db`. Its four binary
   archives and SHA256SUMS were downloaded and verified after publication.
 - Live theme switching was added later in commit
   `170733f5f6ce1e5cfb56033893e4535275b6a85e` on `main`. It is **not included in
   the published v0.1.0 archives**.
-- Cargo.toml and Cargo.lock declare `0.2.0` for the requested next release.
-  Publication is pending validation; never move the existing v0.1.0 tag.
+- Cargo.toml and Cargo.lock declare the published version `0.2.0`.
+  Bump both before the next release; never move the v0.1.0 or v0.2.0 tags.
 - Agent discovery, saved projects, visual agent attention, the browser frontend
-  and additional built-in apps are the current development feature set; they are
-  not included in v0.1.0.
+  and additional built-in apps are included in v0.2.0, along with dual-panel
+  file operations. They are not included in v0.1.0.
 - The local `target/release/saumux` was rebuilt with live themes, agent support,
   the web frontend and additional apps. Build artifacts are ignored by Git and
   must be rebuilt in a fresh checkout.
@@ -98,13 +103,14 @@ for a queued job, unless the user asks otherwise.
   bracketed paste and application mouse-coordinate translation.
 - Shelf/activity indicators, four workspaces, TOML configuration/reload,
   external `ctl` commands and saved/reloaded arrangements.
-- File browser: directory navigation, hidden toggle, refresh, location entry,
-  mouse/keyboard opening of text files in a separate editor window.
+- File browser: dual-panel navigation, file marking, hidden toggle, location
+  entry, copy/move/delete/rename/mkdir prompts, text/image-metadata/binary preview
+  and mouse/keyboard opening of text files in a separate editor window.
 - Editor: UTF-8, search, undo/redo, cursor navigation, scrolling, Save/Save As,
   atomic writes, external-change detection, preserved line endings/permissions,
   and save/discard/cancel on close.
 - Themes: Borland, Norton, Amber, Phosphor, Midnight, Paper, Ocean, Plum, Forest,
-  Burgundy, Ice and Slate. View → Colour
+  Burgundy, Ice, Slate, Matrix, Atari and Tokyo. View → Colour
   theme / Alt+t, `theme.set`, `theme.next`, `theme.list`; all attached clients and
   already-open bundled applications update without restarting or losing state.
 
@@ -365,7 +371,7 @@ request and verify a suspected bug before changing behavior.
 - Configuration adds launchers to fixed menu groups rather than freely arranging
   built-in menus. Command values are validated; key spelling/normalization could
   be improved. Host applications may intercept function/Alt shortcuts.
-- Browser has no file copy/move/rename/delete operations. Editor has no native
+- Editor has no native
   selection model, syntax highlighting, autosave or crash recovery; it uses the
   desktop clipboard. Its current file limit is 2 MiB / 100,000 lines, with bounded
   snapshot undo history.
@@ -391,7 +397,7 @@ request and verify a suspected bug before changing behavior.
   README, LICENSE, implementation notes and terminfo with SHA-256 sidecars.
 
 For the next requested release, update Cargo.toml/Cargo.lock, commit/push, then
-create and push the matching new annotated version tag. v0.1.0 is already taken.
+create and push the matching new annotated version tag. v0.1.0 and v0.2.0 are taken.
 If publication fails after draft creation, inspect that draft before rerunning;
 do not move a published tag to work around an error. Build caches and runner
 capacity affect duration, especially on macOS; they do not justify skipping tests.
