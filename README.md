@@ -11,6 +11,12 @@ and clock, configuration,
 shelving, workspaces, layout files, multiple clients, coding-agent launchers and saved projects. See [implementation notes](docs/implementation.md) for limits
 and validation still needed before treating it as a daily driver.
 
+![saumux desktop with overlapping System Monitor, project shell and Clock windows in the Borland theme](docs/screenshots/desktop.png)
+
+The desktop in the browser frontend, with real PTY windows and live system
+readings. Screenshots use sample files and notes from the development build on
+`main`; some features are newer than the published v0.1.0 release.
+
 ## Build and run
 
 Install stable Rust (1.88 or newer), then:
@@ -133,6 +139,12 @@ them in the configuration. macOS or the host terminal may also intercept functio
 keys or Alt combinations; the menu remains accessible with the mouse.
 
 ## Live colour themes
+
+| Matrix | Atari | Ocean |
+| --- | --- | --- |
+| [![Matrix theme: green on black desktop](docs/screenshots/theme-matrix.png)](docs/screenshots/theme-matrix.png) | [![Atari theme: light grey desktop](docs/screenshots/theme-atari.png)](docs/screenshots/theme-atari.png) | [![Ocean theme: deep blue desktop with seafoam and cyan](docs/screenshots/theme-ocean.png)](docs/screenshots/theme-ocean.png) |
+
+The same running windows after live theme changes. Click an image for full size.
 
 Open **View → Colour theme…** or press **Alt+t** to choose a palette. Use arrows
 and Enter, or click a theme. The picker includes a colour swatch for each option;
@@ -303,6 +315,8 @@ text in small windows. Clock display options and monitor pause/history belong
 to the running app; reopening starts with defaults. Ctrl+q or Esc closes either
 read-only app.
 
+![Notes showing a searchable Markdown notebook, styled headings, a checklist and a shortcut table](docs/screenshots/notes.png)
+
 Notes lists Markdown files in `$XDG_DATA_HOME/saumux/`, or
 `~/.local/share/saumux/` when the data directory is unset. It also keeps an
 existing `notes.txt` scratchpad visible. Press **N** to create a Markdown note,
@@ -341,6 +355,8 @@ New apps require a new session server started with the updated executable;
 existing session servers keep their current code.
 
 ## File browser and editor
+
+![Dual-panel file browser with the bundled text editor in an overlapping window](docs/screenshots/files-editor.png)
 
 Open **File → Browse files** (**Alt+b**) or **File → New text document** (**Alt+e**).
 **File → Open text file** opens the browser as a file picker. Both components are

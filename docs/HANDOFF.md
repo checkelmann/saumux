@@ -1,8 +1,18 @@
 # Agent handoff
 
-Last updated: **2026-11-12**. This file is the continuation entry point, not a
+Last updated: **2026-11-13**. This file is the continuation entry point, not a
 verbatim conversation transcript. Read it together with the README and implementation
 notes; inspect the current source and Git history before making changes.
+
+README screenshots (2026-11-13): six actual browser-client captures live in
+`docs/screenshots/`, showing overlapping monitor/shell/clock windows, the dual-panel
+browser/editor, Markdown Notes and Matrix/Atari/Ocean themes. Regenerate with
+`node tests/browser/screenshots.cjs target/release/saumux` after building and
+installing the browser test dependencies; see `docs/screenshots/README.md`.
+The capture script uses sample data, isolated XDG directories and an ephemeral
+localhost listener, then ends only its own session. Validation: release build
+and real Chromium capture passed, with no page errors or external asset requests;
+live theme changes retained all PTY process IDs. No application behavior changed.
 
 ## Product direction and accepted scope changes
 
