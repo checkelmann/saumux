@@ -4,6 +4,17 @@ Last updated: **2026-11-17**. This file is the continuation entry point, not a
 verbatim conversation transcript. Read it together with the README and implementation
 notes; inspect the current source and Git history before making changes.
 
+v0.3.0 tag pushed (2026-11-17): `v0.3.0` points to
+`e361cab87c726c2dc00b62713d2d16711e8c0142`. Release workflow:
+https://github.com/checkelmann/saumux/actions/runs/44092029452
+Tag validation, Linux x86_64/ARM, macOS Intel and real Chromium all passed.
+macOS ARM is queued waiting for a GitHub runner; no release has been published
+yet at this handoff. Per the recorded preference not to wait only for queued
+runners, the workflow is left to finish and publish automatically after that job
+passes. Follow up by checking this run, verifying all four published archives and
+SHA256SUMS, and applying `docs/releases/v0.3.0.md` as the GitHub release body.
+Do not move/reuse the tag. Local release checks, including Chromium, passed.
+
 v0.3.0 release preparation (2026-11-17): version is now 0.3.0 in Cargo.toml
 and Cargo.lock, with user-facing notes in `docs/releases/v0.3.0.md`. The user
 explicitly authorized cutting and publishing this release. Local macOS validation
