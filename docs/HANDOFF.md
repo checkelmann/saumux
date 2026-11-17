@@ -1,8 +1,33 @@
 # Agent handoff
 
-Last updated: **2026-11-13**. This file is the continuation entry point, not a
+Last updated: **2026-11-17**. This file is the continuation entry point, not a
 verbatim conversation transcript. Read it together with the README and implementation
 notes; inspect the current source and Git history before making changes.
+
+Editor highlighting and Save As (2026-11-17): the editor now detects common
+code/config extensions and colours keywords, strings, numbers and comments through
+shared theme roles. `editor_syntax.rs` is a small dependency-free lexer with
+multiline comment/string state; this is lexical colouring rather than a full
+language parser. Character-indexed tokens preserve tab/wide/combining geometry.
+The editor caches tokens by document revision and detected language, invalidates
+on edits/undo/redo or Save As extension changes, and recolours with live themes.
+Unknown extensions (including Markdown) remain plain text; Notes reading-preview
+code blocks are unchanged.
+
+`editor_save.rs` replaces the standalone editor's Save As path prompt with a
+centred file chooser: editable folder/filename fields, sorted directories/files,
+keyboard focus/navigation, mouse selection, parent-folder and Save/Cancel buttons.
+Chooser errors retain entered paths. Overwrite cancellation restores the chooser;
+atomic saving, external-change checks and save/discard/cancel protection remain
+in the document engine. Inline Notes keeps its existing controls.
+Validation on macOS: formatting, strict all-target Clippy, 32 unit / 28 integration
+tests, release build and controlling-PTY restoration passed. Added regression
+coverage for syntax updates/undo/live themes/Save As redetection, chooser browsing,
+overwrite cancellation/confirmation, paste/mouse actions and tiny rendering.
+Syntax roles pass the existing contrast audit across all 15 palettes. The optional
+Chromium smoke test could not launch because its Playwright browser executable is
+absent. Existing user sessions were left running; the rebuilt executable needs a
+new session to load the changes. No release/version bump is included.
 
 README screenshots (2026-11-13): six actual browser-client captures live in
 `docs/screenshots/`, showing overlapping monitor/shell/clock windows, the dual-panel
@@ -106,7 +131,8 @@ for a queued job, unless the user asks otherwise.
 - File browser: dual-panel navigation, file marking, hidden toggle, location
   entry, copy/move/delete/rename/mkdir prompts, text/image-metadata/binary preview
   and mouse/keyboard opening of text files in a separate editor window.
-- Editor: UTF-8, search, undo/redo, cursor navigation, scrolling, Save/Save As,
+- Editor: UTF-8, basic syntax highlighting, search, undo/redo, cursor navigation,
+  scrolling, Save/Save As with a folder/file chooser,
   atomic writes, external-change detection, preserved line endings/permissions,
   and save/discard/cancel on close.
 - Themes: Borland, Norton, Amber, Phosphor, Midnight, Paper, Ocean, Plum, Forest,

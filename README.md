@@ -377,7 +377,11 @@ browser. Desktop shortcuts such as F6 still belong to the window manager.
 
 The editor supports UTF-8 text, mouse cursor placement, scrolling, tabs, search,
 undo/redo, Save and Save As. Its toolbar is clickable, and save actions are also
-available in the desktop File menu.
+available in the desktop File menu. Basic syntax highlighting follows the filename
+for Rust, C/C++, Java, Go, C#, JavaScript/TypeScript, Python, shell scripts, JSON
+and TOML. Keywords, strings, numbers and comments use live theme colours;
+other file types stay plain text. This is lightweight lexical colouring, without
+language-server diagnostics or completion.
 
 | Editor action | Shortcut |
 | --- | --- |
@@ -387,9 +391,17 @@ available in the desktop File menu.
 | Close | Ctrl+q, or the window close button |
 | First / last line | Ctrl+Home / Ctrl+End |
 
-Path/search fields accept Enter and Esc; Ctrl+u clears the field. Use Alt+drag and
+Save As opens a file dialog with a folder field, directory listing, filename
+field and Save/Cancel buttons. Tab/Shift+Tab changes focus; arrows select entries,
+Enter opens a directory or chooses a file, and Backspace in the list goes to the
+parent folder. The Up folder button and file list also accept mouse clicks.
+Enter in the filename field saves; Esc cancels. Selecting an existing file asks
+before replacing it; cancelling that confirmation returns to the dialog.
+Absolute paths are accepted in either field. Ctrl+u clears a field.
+
+Search fields accept Enter and Esc; Ctrl+u clears the field. Use Alt+drag and
 Alt+c for saumux text copying, and Shift+Insert for its clipboard paste. There is
-no native editor text-selection model or syntax highlighting in this first version.
+no native editor text-selection model in this version.
 
 Unsaved documents show `*` in their title. Closing asks whether to save, discard,
 or cancel. Save As asks before replacing another file. Saves use a temporary file

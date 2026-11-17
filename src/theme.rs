@@ -191,6 +191,29 @@ impl std::str::FromStr for ThemeId {
     }
 }
 impl Theme {
+    // Semantic editor roles share the document background and readable ANSI inks.
+    pub fn editor_syntax(&self) -> [Style; 5] {
+        let inks = if self.editor.bg == Some(Color::Idx(15)) {
+            [4, 1, 5, 8]
+        } else if self.editor.bg == Some(Color::Idx(5)) {
+            [15, 10, 14, 15]
+        } else {
+            [15, 10, 14, 7]
+        };
+        let mut styles = [
+            self.editor.clone(),
+            self.editor.clone(),
+            self.editor.clone(),
+            self.editor.clone(),
+            self.editor.clone(),
+        ];
+        for (style, ink) in styles[1..].iter_mut().zip(inks) {
+            style.fg = Some(Color::Idx(ink));
+        }
+        styles[1].bold = true;
+        styles[4].italic = true;
+        styles
+    }
     pub fn named(id: ThemeId) -> Self {
         let mut theme = match id {
             ThemeId::Borland => Self::default(),
@@ -635,26 +658,31 @@ mod tests {
         });
         for id in ThemeId::ALL {
             let t = Theme::named(id);
-            for (name, style) in [
-                ("inactive_title", t.inactive_title),
-                ("title", t.title),
-                ("menu", t.menu),
-                ("selected", t.selected),
-                ("hotkey", t.hotkey),
-                ("shortcut", t.shortcut),
-                ("status", t.status),
-                ("key", t.key),
-                ("activity", t.activity),
-                ("dialog", t.dialog),
-                ("text", t.text),
-                ("editor", t.editor),
-                ("directory", t.directory),
-                ("field", t.field),
-                ("warning", t.warning),
-                ("monitor_text", t.monitor_text),
-                ("monitor_muted", t.monitor_muted),
-                ("monitor_accent", t.monitor_accent),
-            ] {
+            for (name, style) in t
+                .editor_syntax()
+                .into_iter()
+                .map(|s| ("editor_syntax", s))
+                .chain([
+                    ("inactive_title", t.inactive_title),
+                    ("title", t.title),
+                    ("menu", t.menu),
+                    ("selected", t.selected),
+                    ("hotkey", t.hotkey),
+                    ("shortcut", t.shortcut),
+                    ("status", t.status),
+                    ("key", t.key),
+                    ("activity", t.activity),
+                    ("dialog", t.dialog),
+                    ("text", t.text),
+                    ("editor", t.editor),
+                    ("directory", t.directory),
+                    ("field", t.field),
+                    ("warning", t.warning),
+                    ("monitor_text", t.monitor_text),
+                    ("monitor_muted", t.monitor_muted),
+                    ("monitor_accent", t.monitor_accent),
+                ])
+            {
                 let (Some(Color::Idx(fg)), Some(Color::Idx(bg))) = (style.fg, style.bg) else {
                     panic!("{} {name}: expected indexed colours", id.id());
                 };

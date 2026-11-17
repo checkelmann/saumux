@@ -13,6 +13,13 @@ and optional `make browser`).
 
 - `browser.rs`, `editor.rs`, `builtin.rs`: bundled terminal applications with
   shared retro rendering, file navigation, text editing and save dialogs.
+  `editor_save.rs` owns the Save As folder/file chooser; it only returns paths,
+  while the document engine retains atomic writes and overwrite/change protection.
+  `editor_syntax.rs` provides dependency-free lexical highlighting for common
+  code/config extensions. The editor caches character-indexed tokens by document
+  revision and detected language, including undo/redo and Save As extension changes.
+  Idle/theme redraws reuse tokens; `theme.rs` owns the syntax styles and contrast
+  checks. Both editor render paths retain shared tab/wide/combining geometry.
 - `apps.rs`: live system monitor and local/UTC digital clock. `notes.rs` owns
   the Markdown notebook, deletion confirmation and inline editing through the
   protected editor. `notes_markdown.rs` renders parsed Markdown into themed cells.

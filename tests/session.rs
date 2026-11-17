@@ -680,7 +680,7 @@ fn bundled_editor_new_document_save_as_and_reopen() {
     client.until("Ctrl+S Save");
     client.event(Event::Paste("Grüße\n界\n".into()));
     client.key(KeyCode::Char('s'), KeyModifiers::CONTROL);
-    client.until("Save as (Enter / Esc)");
+    client.until("Filename:");
     client.event(Event::Paste(path.to_str().unwrap().into()));
     client.key(KeyCode::Enter, KeyModifiers::NONE);
     client.until("Saved");
@@ -691,6 +691,85 @@ fn bundled_editor_new_document_save_as_and_reopen() {
     s.ctl("editor.open", &[path.to_str().unwrap()]);
     client.until("Grüße");
     client.until("界");
+}
+
+#[test]
+fn editor_highlighting_and_save_dialog_browsing_overwrite_cancel() {
+    use vt100::Color;
+    let s = Session::start(&["/bin/sh"]);
+    let source = s.root.join("source.rs");
+    let destination = s.root.join("destination");
+    fs::create_dir(&destination).unwrap();
+    fs::write(&source, "let total = 42; // comment\n").unwrap();
+    fs::write(destination.join("existing.txt"), "keep me").unwrap();
+    let mut client = s.attach(100, 30);
+    client.until("System");
+    s.ctl("editor.open", &[source.to_str().unwrap()]);
+    client.until("let total");
+    let window = s.ctl("list", &[])[1].clone();
+    let x = window["rect"]["x"].as_u64().unwrap() as u16 + 1;
+    let y = window["rect"]["y"].as_u64().unwrap() as u16 + 2;
+    client.until_render("keyword styling", |screen| {
+        screen
+            .cell(y, x)
+            .is_some_and(|c| c.bold() && c.fgcolor() == Color::Idx(15))
+    });
+    s.ctl("theme.set", &["paper"]);
+    client.until_render("live syntax theme", |screen| {
+        screen.cell(y, x).is_some_and(|c| {
+            c.bold() && c.fgcolor() == Color::Idx(4) && c.bgcolor() == Color::Idx(15)
+        })
+    });
+    client.text("//");
+    client.until_render("editing updates highlighting", |screen| {
+        screen
+            .cell(y, x)
+            .is_some_and(|c| !c.bold() && c.fgcolor() == Color::Idx(8))
+    });
+    client.key(KeyCode::Char('z'), KeyModifiers::CONTROL);
+    client.key(KeyCode::Char('z'), KeyModifiers::CONTROL);
+    client.until_render("undo restores keyword", |screen| {
+        screen
+            .cell(y, x)
+            .is_some_and(|c| c.bold() && c.fgcolor() == Color::Idx(4))
+    });
+    client.key(KeyCode::Char('o'), KeyModifiers::CONTROL);
+    client.until("Filename:");
+    // Filename -> Save -> Cancel -> Folder, then browse to another directory.
+    for _ in 0..3 {
+        client.key(KeyCode::Tab, KeyModifiers::NONE);
+    }
+    client.key(KeyCode::Char('u'), KeyModifiers::CONTROL);
+    client.event(Event::Paste(destination.to_str().unwrap().into()));
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("existing.txt");
+    client.key(KeyCode::Tab, KeyModifiers::NONE);
+    client.key(KeyCode::Enter, KeyModifiers::NONE); // choose existing file
+    client.key(KeyCode::Enter, KeyModifiers::NONE); // request save
+    client.until("File exists.");
+    client.key(KeyCode::Esc, KeyModifiers::NONE);
+    client.until("Filename:");
+    assert_eq!(
+        fs::read_to_string(destination.join("existing.txt")).unwrap(),
+        "keep me"
+    );
+    client.key(KeyCode::Enter, KeyModifiers::NONE);
+    client.until("File exists.");
+    client.key(KeyCode::Char('y'), KeyModifiers::NONE);
+    client.until("Saved");
+    assert_eq!(
+        fs::read_to_string(destination.join("existing.txt")).unwrap(),
+        "let total = 42; // comment\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&source).unwrap(),
+        "let total = 42; // comment\n"
+    );
+    client.until_render("Save As redetects plain text", |screen| {
+        screen
+            .cell(y, x)
+            .is_some_and(|c| !c.bold() && c.fgcolor() == Color::Idx(0))
+    });
 }
 
 #[test]

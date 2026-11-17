@@ -7,6 +7,8 @@ mod client;
 mod commands;
 mod config;
 mod editor;
+mod editor_save;
+mod editor_syntax;
 mod geometry;
 mod gpm;
 mod input;

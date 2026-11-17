@@ -30,6 +30,7 @@ impl Snapshot {
 }
 
 pub struct Document {
+    revision: u64,
     state: Snapshot,
     saved: Vec<Vec<char>>,
     pub path: Option<PathBuf>,
@@ -75,6 +76,7 @@ impl Document {
             bail!("this file has too many lines for the first editor (limit: 100,000)");
         }
         Ok(Self {
+            revision: 0,
             state: Snapshot {
                 lines: lines.clone(),
                 row: 0,
@@ -135,6 +137,7 @@ impl Document {
         Ok(())
     }
     fn remember(&mut self) {
+        self.revision += 1;
         push_history(&mut self.undo, self.state.clone());
         self.redo.clear();
     }
@@ -163,11 +166,13 @@ impl Document {
     }
     fn undo(&mut self) {
         if let Some(previous) = self.undo.pop_back() {
+            self.revision += 1;
             push_history(&mut self.redo, std::mem::replace(&mut self.state, previous));
         }
     }
     fn redo(&mut self) {
         if let Some(next) = self.redo.pop_back() {
+            self.revision += 1;
             push_history(&mut self.undo, std::mem::replace(&mut self.state, next));
         }
     }
@@ -300,10 +305,10 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 enum Dialog {
-    SaveAs(Prompt),
+    SaveAs(crate::editor_save::SaveDialog),
     Find(Prompt),
     Close,
-    Overwrite(PathBuf),
+    Overwrite(PathBuf, crate::editor_save::SaveDialog),
 }
 pub(crate) struct Editor {
     doc: Document,
@@ -313,6 +318,8 @@ pub(crate) struct Editor {
     dialog: Option<Dialog>,
     close_after_save: bool,
     query: String,
+    syntax: Vec<Vec<crate::editor_syntax::Token>>,
+    syntax_key: Option<(u64, Option<crate::editor_syntax::Language>)>,
 }
 const ACTIONS: &[(&str, &str)] = &[
     (" Save  ", "save"),
@@ -348,6 +355,8 @@ impl Editor {
             dialog: None,
             close_after_save: false,
             query: String::new(),
+            syntax: vec![],
+            syntax_key: None,
         }
     }
     fn visible(&mut self, width: u16, height: u16) {
@@ -369,11 +378,23 @@ impl Editor {
             self.left = col + 1 - width as usize;
         }
     }
+    fn update_syntax(&mut self) {
+        let language = crate::editor_syntax::Language::detect(self.doc.path.as_deref());
+        let key = (self.doc.revision, language);
+        if self.syntax_key != Some(key) {
+            self.syntax = language
+                .map(|l| crate::editor_syntax::highlight(&self.doc.state.lines, l))
+                .unwrap_or_default();
+            self.syntax_key = Some(key);
+        }
+    }
     fn draw(&mut self, width: u16, height: u16) -> Grid {
         self.visible(width, height);
+        self.update_syntax();
         let theme = crate::theme::current();
         let mut grid = Grid::new(width, height);
         grid.fill(0, 0, width, height, " ", theme.editor.clone());
+        let styles = theme.editor_syntax();
         builtin::toolbar(&mut grid, 0, ACTIONS);
         for (y, line) in self
             .doc
@@ -384,7 +405,10 @@ impl Editor {
             .take(height.saturating_sub(3) as usize)
             .enumerate()
         {
-            builtin::line(&mut grid, y as u16 + 1, line, self.left, width);
+            let tokens = self.syntax.get(self.top + y);
+            builtin::styled_line_at(&mut grid, 0, y as u16 + 1, line, self.left, width, |i| {
+                styles[tokens.and_then(|t| t.get(i)).copied().unwrap_or_default() as usize].clone()
+            });
         }
         let path = self
             .doc
@@ -412,7 +436,8 @@ impl Editor {
             grid.cursor = Some((x, y));
         }
         match &self.dialog {
-            Some(Dialog::SaveAs(p) | Dialog::Find(p)) => {
+            Some(Dialog::SaveAs(_)) => {}
+            Some(Dialog::Find(p)) => {
                 builtin::toolbar(&mut grid, height.saturating_sub(2), PROMPT_ACTIONS);
                 p.draw(&mut grid);
             }
@@ -427,7 +452,7 @@ impl Editor {
                 );
                 grid.cursor = None;
             }
-            Some(Dialog::Overwrite(_)) => {
+            Some(Dialog::Overwrite(..)) => {
                 builtin::toolbar(&mut grid, height.saturating_sub(1), OVERWRITE_ACTIONS);
                 grid.text(
                     0,
@@ -439,6 +464,9 @@ impl Editor {
                 grid.cursor = None;
             }
             None => {}
+        }
+        if let Some(Dialog::SaveAs(dialog)) = &mut self.dialog {
+            dialog.draw(&mut grid);
         }
         grid
     }
@@ -491,6 +519,8 @@ impl Editor {
     }
     pub(crate) fn draw_inline(&mut self, grid: &mut Grid, x: u16, y: u16, width: u16, height: u16) {
         self.inline_visible(width, height);
+        self.update_syntax();
+        let styles = crate::theme::current().editor_syntax();
         for (line_y, line) in self
             .doc
             .state
@@ -500,7 +530,10 @@ impl Editor {
             .take(height as usize)
             .enumerate()
         {
-            builtin::line_at(grid, x, y + line_y as u16, line, self.left, width);
+            let tokens = self.syntax.get(self.top + line_y);
+            builtin::styled_line_at(grid, x, y + line_y as u16, line, self.left, width, |i| {
+                styles[tokens.and_then(|t| t.get(i)).copied().unwrap_or_default() as usize].clone()
+            });
         }
         let col = builtin::column(
             &self.doc.state.lines[self.doc.state.row],
@@ -532,14 +565,47 @@ impl Editor {
         }
     }
     fn save_as(&mut self) {
-        let path = self
-            .doc
-            .path
-            .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or_default();
-        self.dialog = Some(Dialog::SaveAs(Prompt::new("Save as (Enter / Esc)", path)));
+        self.dialog = Some(Dialog::SaveAs(crate::editor_save::SaveDialog::new(
+            self.doc.path.as_deref(),
+        )));
     }
+    fn save_dialog_event(&mut self, event: Event, width: u16, height: u16) -> Result<bool> {
+        let Some(Dialog::SaveAs(dialog)) = &mut self.dialog else {
+            return Ok(false);
+        };
+        match dialog.event(event, width, height) {
+            Some(crate::editor_save::Outcome::Cancel) => {
+                self.dialog = None;
+                self.close_after_save = false;
+            }
+            Some(crate::editor_save::Outcome::Save(path)) => {
+                let result = (|| -> Result<bool> {
+                    let path = absolute(&path)?;
+                    if path.exists() && self.doc.path.as_ref() != Some(&path) {
+                        let Some(Dialog::SaveAs(chooser)) = self.dialog.take() else {
+                            unreachable!()
+                        };
+                        self.dialog = Some(Dialog::Overwrite(path, chooser));
+                        Ok(false)
+                    } else {
+                        self.doc.save(&path, false)?;
+                        self.dialog = None;
+                        self.message = "Saved".into();
+                        Ok(self.close_after_save)
+                    }
+                })();
+                if let Err(e) = &result
+                    && let Some(Dialog::SaveAs(dialog)) = &mut self.dialog
+                {
+                    dialog.set_error(e.to_string());
+                }
+                return result;
+            }
+            None => {}
+        }
+        Ok(false)
+    }
+
     fn action(&mut self, action: &str) -> Result<bool> {
         match action {
             "save" => return self.save(),
@@ -583,36 +649,24 @@ impl Editor {
                     KeyCode::Esc => self.close_after_save = false,
                     _ => self.dialog = Some(Dialog::Close),
                 },
-                Dialog::Overwrite(path) => match key.code {
+                Dialog::Overwrite(path, mut chooser) => match key.code {
                     KeyCode::Char('y' | 'Y') => {
-                        self.doc.save(&path, true)?;
+                        if let Err(error) = self.doc.save(&path, true) {
+                            chooser.set_error(error.to_string());
+                            self.dialog = Some(Dialog::SaveAs(chooser));
+                            return Err(error);
+                        }
                         self.message = "Saved".into();
                         return Ok(self.close_after_save);
                     }
-                    KeyCode::Char('n' | 'N') | KeyCode::Esc => self.close_after_save = false,
-                    _ => self.dialog = Some(Dialog::Overwrite(path)),
-                },
-                Dialog::SaveAs(mut prompt) => match key.code {
-                    KeyCode::Esc => self.close_after_save = false,
-                    KeyCode::Enter => {
-                        if prompt.text.is_empty() {
-                            self.dialog = Some(Dialog::SaveAs(prompt));
-                            return Ok(false);
-                        }
-                        let path = absolute(Path::new(&prompt.text))?;
-                        if path.exists() && self.doc.path.as_ref() != Some(&path) {
-                            self.dialog = Some(Dialog::Overwrite(path));
-                        } else {
-                            self.doc.save(&path, false)?;
-                            self.message = "Saved".into();
-                            return Ok(self.close_after_save);
-                        }
+                    KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                        self.dialog = Some(Dialog::SaveAs(chooser));
                     }
-                    _ => {
-                        prompt.edit(key);
-                        self.dialog = Some(Dialog::SaveAs(prompt));
-                    }
+                    _ => self.dialog = Some(Dialog::Overwrite(path, chooser)),
                 },
+                Dialog::SaveAs(dialog) => {
+                    self.dialog = Some(Dialog::SaveAs(dialog));
+                }
                 Dialog::Find(mut prompt) => match key.code {
                     KeyCode::Esc => {}
                     KeyCode::Enter => {
@@ -722,10 +776,15 @@ pub fn run_named(path: Option<&Path>, label: &str) -> Result<()> {
             continue;
         };
         let result = (|| -> Result<bool> {
+            if matches!(editor.dialog, Some(Dialog::SaveAs(_)))
+                && !matches!(&event, Event::Key(k) if k.code == KeyCode::Char('q') && k.modifiers.contains(KeyModifiers::CONTROL))
+            {
+                return editor.save_dialog_event(event, width, height);
+            }
             match event {
                 Event::Key(key) if key.kind != KeyEventKind::Release => return editor.key(key),
                 Event::Paste(text) => {
-                    if let Some(Dialog::SaveAs(p) | Dialog::Find(p)) = &mut editor.dialog {
+                    if let Some(Dialog::Find(p)) = &mut editor.dialog {
                         let text = text.replace(['\r', '\n'], "");
                         let byte = p
                             .text
@@ -746,14 +805,12 @@ pub fn run_named(path: Option<&Path>, label: &str) -> Result<()> {
                                 Some(Dialog::Close) if mouse.row == height.saturating_sub(1) => {
                                     CLOSE_ACTIONS
                                 }
-                                Some(Dialog::Overwrite(_))
+                                Some(Dialog::Overwrite(..))
                                     if mouse.row == height.saturating_sub(1) =>
                                 {
                                     OVERWRITE_ACTIONS
                                 }
-                                Some(Dialog::SaveAs(_) | Dialog::Find(_))
-                                    if mouse.row == height.saturating_sub(2) =>
-                                {
+                                Some(Dialog::Find(_)) if mouse.row == height.saturating_sub(2) => {
                                     PROMPT_ACTIONS
                                 }
                                 _ => return Ok(false),

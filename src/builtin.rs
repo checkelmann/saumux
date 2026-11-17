@@ -124,9 +124,22 @@ pub fn line(grid: &mut Grid, y: u16, text: &[char], left: usize, width: u16) {
 }
 pub fn line_at(grid: &mut Grid, origin_x: u16, y: u16, text: &[char], left: usize, width: u16) {
     let theme = crate::theme::current();
+    styled_line_at(grid, origin_x, y, text, left, width, |_| {
+        theme.editor.clone()
+    });
+}
+pub fn styled_line_at(
+    grid: &mut Grid,
+    origin_x: u16,
+    y: u16,
+    text: &[char],
+    left: usize,
+    width: u16,
+    style: impl Fn(usize) -> crate::render::Style,
+) {
     let mut column = 0usize;
     let mut previous = None;
-    for &c in text {
+    for (index, &c) in text.iter().enumerate() {
         let cells = if c == '\t' {
             4 - column % 4
         } else {
@@ -149,7 +162,7 @@ pub fn line_at(grid: &mut Grid, origin_x: u16, y: u16, text: &[char], left: usiz
         if column >= left && column + cells <= left + width as usize {
             let x = origin_x + (column - left) as u16;
             if c == '\t' {
-                grid.fill(x, y, cells as u16, 1, " ", theme.editor.clone());
+                grid.fill(x, y, cells as u16, 1, " ", style(index));
                 previous = None;
             } else {
                 grid.put(
@@ -161,7 +174,7 @@ pub fn line_at(grid: &mut Grid, origin_x: u16, y: u16, text: &[char], left: usiz
                         c.to_string()
                     },
                     cells.min(2) as u8,
-                    theme.editor.clone(),
+                    style(index),
                 );
                 previous = Some(x);
             }
