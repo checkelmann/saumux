@@ -4,6 +4,16 @@ Last updated: **2026-11-17**. This file is the continuation entry point, not a
 verbatim conversation transcript. Read it together with the README and implementation
 notes; inspect the current source and Git history before making changes.
 
+v0.3.0 release preparation (2026-11-17): version is now 0.3.0 in Cargo.toml
+and Cargo.lock, with user-facing notes in `docs/releases/v0.3.0.md`. The user
+explicitly authorized cutting and publishing this release. Local macOS validation
+passed: formatting, strict all-target Clippy, 32 unit / 28 integration tests,
+release build (`saumux 0.3.0`), controlling-PTY restoration, packaging helper tests
+and real Chromium smoke. The previously missing Playwright Chromium was installed
+for this check. Tag `v0.3.0` was confirmed unused before preparation; publication
+is pending the tag workflow's four native targets and Chromium check. Do not move
+or reuse published version tags.
+
 Save As readability (2026-11-17): the chooser now uses dedicated semantic
 `FileDialogStyles` from `theme.rs`: black/white document surfaces, distinct idle
 fields/buttons and a contrasting focused field/selection, with palette accents
@@ -100,8 +110,8 @@ saving with checkpointing program state.
 - Live theme switching was added later in commit
   `170733f5f6ce1e5cfb56033893e4535275b6a85e` on `main`. It is **not included in
   the published v0.1.0 archives**.
-- Cargo.toml and Cargo.lock declare the published version `0.2.0`.
-  Bump both before the next release; never move the v0.1.0 or v0.2.0 tags.
+- Cargo.toml and Cargo.lock declare `0.3.0`, prepared for the next release.
+  Never move or reuse published version tags.
 - Agent discovery, saved projects, visual agent attention, the browser frontend
   and additional built-in apps are included in v0.2.0, along with dual-panel
   file operations. They are not included in v0.1.0.

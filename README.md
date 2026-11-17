@@ -525,7 +525,11 @@ macOS. Linux release executables use musl for static linking. Each archive
 contains `saumux`, documentation, the license and the optional terminfo entry.
 Downloads are accompanied by `SHA256SUMS`.
 
-v0.2.0 adds live themes, agent/project support, the web frontend, dual-panel file
+v0.3.0 adds automatic editor syntax highlighting and a themed Save As file dialog.
+See the [v0.3.0 release notes](docs/releases/v0.3.0.md) for supported languages
+and dialog controls.
+
+v0.2.0 added live themes, agent/project support, the web frontend, dual-panel file
 operations and additional built-in apps. See the [release notes](docs/releases/v0.2.0.md)
 for details. These features are not in the older v0.1.0 downloads.
 
@@ -533,8 +537,8 @@ To publish the next version, update `version` in Cargo.toml, run `cargo check` t
 Cargo.lock, commit and push those changes, then push the matching version tag:
 
 ```sh
-git tag -a v0.2.1 -m "saumux 0.2.1"
-git push origin v0.2.1
+git tag -a v0.3.1 -m "saumux 0.3.1"
+git push origin v0.3.1
 ```
 
 The release workflow rejects a tag that does not match Cargo.toml. All four builds
