@@ -197,8 +197,8 @@ impl SaveDialog {
                 let col = mouse.column - x;
                 let row = mouse.row - y;
                 match mouse.kind {
-                    MouseEventKind::Down(MouseButton::Left) if row == 1 => {
-                        match builtin::action_at(col, ACTIONS) {
+                    MouseEventKind::Down(MouseButton::Left) if row == 1 && col > 0 => {
+                        match builtin::action_at(col - 1, ACTIONS) {
                             Some("up") => {
                                 if let Some(p) = self.directory.parent() {
                                     self.enter_directory(p.to_path_buf());
@@ -247,21 +247,43 @@ impl SaveDialog {
     }
     pub fn draw(&mut self, grid: &mut Grid) {
         let (x, y, w, h) = Self::geometry(grid.cols, grid.rows);
-        let theme = crate::theme::current();
+        let theme = crate::theme::current().file_dialog();
         let mut panel = Grid::new(w, h);
-        panel.fill(0, 0, w, h, " ", theme.dialog.clone());
-        builtin::bar(&mut panel, 0, " Save As");
-        builtin::toolbar(&mut panel, 1, ACTIONS);
-        if self.focus >= 3 {
-            let index = self.focus - 2;
-            let offset = ACTIONS[..index].iter().map(|(s, _)| s.len()).sum::<usize>() as u16;
+        panel.fill(0, 0, w, h, " ", theme.body.clone());
+        let inner = w.saturating_sub(2);
+        if w >= 2 && h >= 2 {
+            for row in 0..h {
+                panel.text(0, row, "│", 1, theme.border.clone());
+                panel.text(w - 1, row, "│", 1, theme.border.clone());
+            }
+            for row in [0, h - 1] {
+                panel.fill(1, row, inner, 1, "─", theme.border.clone());
+            }
+            for (cx, cy, glyph) in [
+                (0, 0, "┌"),
+                (w - 1, 0, "┐"),
+                (0, h - 1, "└"),
+                (w - 1, h - 1, "┘"),
+            ] {
+                panel.text(cx, cy, glyph, 1, theme.border.clone());
+            }
+        }
+        panel.text(2, 0, " Save As ", w.saturating_sub(4), theme.title.clone());
+        let mut offset = 1;
+        for (index, (label, _)) in ACTIONS.iter().enumerate() {
+            let focused = (index == 1 && self.focus == 3) || (index == 2 && self.focus == 4);
             panel.text(
                 offset,
                 1,
-                ACTIONS[index].0,
-                w.saturating_sub(offset),
-                theme.selected.clone(),
+                label,
+                w.saturating_sub(offset + 1),
+                if focused {
+                    theme.active.clone()
+                } else {
+                    theme.button.clone()
+                },
             );
+            offset += label.len() as u16;
         }
         if h >= 9 {
             let rows = h.saturating_sub(8) as usize;
@@ -271,34 +293,57 @@ impl SaveDialog {
             if self.selected >= self.top + rows {
                 self.top = self.selected + 1 - rows;
             }
+            panel.fill(1, 3, inner, 1, "─", theme.border.clone());
             panel.text(
-                0,
+                2,
                 3,
-                " Files and folders (Enter opens, Backspace goes up)",
-                w,
-                theme.dialog.clone(),
+                " Files and folders ",
+                w.saturating_sub(4),
+                theme.body.clone(),
             );
             for (i, entry) in self.entries.iter().enumerate().skip(self.top).take(rows) {
+                let selected = self.focus == 1 && i == self.selected;
+                let row = 4 + (i - self.top) as u16;
+                let style = if selected {
+                    &theme.active
+                } else if entry.directory {
+                    &theme.directory
+                } else {
+                    &theme.body
+                };
+                panel.fill(1, row, inner, 1, " ", style.clone());
                 panel.text(
-                    0,
-                    4 + (i - self.top) as u16,
-                    &format!(" {}{}", entry.name, if entry.directory { "/" } else { "" }),
-                    w,
-                    if self.focus == 1 && i == self.selected {
-                        theme.selected.clone()
-                    } else {
-                        theme.dialog.clone()
-                    },
+                    1,
+                    row,
+                    &format!(
+                        "{} {}{}",
+                        if selected { ">" } else { " " },
+                        entry.name,
+                        if entry.directory { "/" } else { "" }
+                    ),
+                    inner,
+                    style.clone(),
                 );
             }
+            panel.fill(1, h - 4, inner, 1, "─", theme.border.clone());
             self.field(&mut panel, 2, &self.location, 0);
             self.field(&mut panel, h - 3, &self.filename, 2);
-            builtin::bar(
-                &mut panel,
+            panel.text(
+                1,
                 h - 2,
                 " Tab: next field · Enter: open/save · Esc: cancel",
+                inner,
+                theme.body.clone(),
             );
-            panel.text(0, h - 1, &self.error, w, theme.warning.clone());
+            if !self.error.is_empty() {
+                panel.text(
+                    1,
+                    h - 1,
+                    &self.error,
+                    inner,
+                    crate::theme::current().warning,
+                );
+            }
         } else {
             self.field(&mut panel, h.saturating_sub(1), &self.filename, 2);
         }
@@ -306,23 +351,31 @@ impl SaveDialog {
         grid.blit(&panel, x, y);
     }
     fn place_cursor(prompt: &mut Prompt, col: u16, width: u16) {
-        let start = (prompt.label.len() as u16 + 2).min(width);
+        let start = (prompt.label.len() as u16 + 3).min(width.saturating_sub(1));
         let text: Vec<_> = prompt.text.chars().collect();
         let left = builtin::column(&text, prompt.cursor)
-            .saturating_sub(width.saturating_sub(start).saturating_sub(1) as usize);
+            .saturating_sub(width.saturating_sub(start).saturating_sub(2) as usize);
         prompt.cursor = builtin::index_at(&text, left + col.saturating_sub(start) as usize);
     }
     fn field(&self, grid: &mut Grid, y: u16, prompt: &Prompt, focus: usize) {
-        let theme = crate::theme::current();
+        let theme = crate::theme::current().file_dialog();
         let label = format!("{}: ", prompt.label);
-        let start = (label.len() as u16).min(grid.cols);
-        grid.text(0, y, &label, start, theme.dialog.clone());
-        let width = grid.cols.saturating_sub(start);
-        grid.fill(start, y, width, 1, " ", theme.field.clone());
+        let end = grid.cols.saturating_sub(1);
+        let start = (label.len() as u16 + 1).min(end);
+        let mut label_style = theme.body;
+        label_style.bold = self.focus == focus;
+        grid.text(1, y, &label, grid.cols.saturating_sub(2), label_style);
+        let width = end.saturating_sub(start);
+        let style = if self.focus == focus {
+            theme.active
+        } else {
+            theme.field
+        };
+        grid.fill(start, y, width, 1, " ", style.clone());
         let text: Vec<_> = prompt.text.chars().collect();
         let cursor = builtin::column(&text, prompt.cursor);
         let left = cursor.saturating_sub(width.saturating_sub(1) as usize);
-        builtin::styled_line_at(grid, start, y, &text, left, width, |_| theme.field.clone());
+        builtin::styled_line_at(grid, start, y, &text, left, width, |_| style.clone());
         if self.focus == focus && width > 0 {
             grid.cursor = Some((start + (cursor - left) as u16, y));
         }

@@ -15,6 +15,8 @@ and optional `make browser`).
   shared retro rendering, file navigation, text editing and save dialogs.
   `editor_save.rs` owns the Save As folder/file chooser; it only returns paths,
   while the document engine retains atomic writes and overwrite/change protection.
+  Its framed list and focused fields use dedicated `FileDialogStyles` roles in
+  `theme.rs`, covered by the all-palette contrast audit.
   `editor_syntax.rs` provides dependency-free lexical highlighting for common
   code/config extensions. The editor caches character-indexed tokens by document
   revision and detected language, including undo/redo and Save As extension changes.

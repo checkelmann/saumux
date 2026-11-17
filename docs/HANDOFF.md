@@ -4,6 +4,15 @@ Last updated: **2026-11-17**. This file is the continuation entry point, not a
 verbatim conversation transcript. Read it together with the README and implementation
 notes; inspect the current source and Git history before making changes.
 
+Save As readability (2026-11-17): the chooser now uses dedicated semantic
+`FileDialogStyles` from `theme.rs`: black/white document surfaces, distinct idle
+fields/buttons and a contrasting focused field/selection, with palette accents
+for the title and folders. Added a visible outer frame, separators, bold directory
+names and a full-row selection marker. Mouse coordinates and field scrolling
+account for the border inset. The existing contrast audit now includes every
+chooser role across all 15 themes. Formatting, strict all-target Clippy, all 32
+unit / 28 integration tests and the macOS release build passed.
+
 Editor highlighting and Save As (2026-11-17): the editor now detects common
 code/config extensions and colours keywords, strings, numbers and comments through
 shared theme roles. `editor_syntax.rs` is a small dependency-free lexer with

@@ -35,6 +35,16 @@ pub struct Theme {
     pub monitor_accent: Style,
     pub monitor_grid: Style,
 }
+// The file chooser needs distinct surfaces even in palettes with grey menus.
+pub struct FileDialogStyles {
+    pub body: Style,
+    pub border: Style,
+    pub title: Style,
+    pub directory: Style,
+    pub field: Style,
+    pub button: Style,
+    pub active: Style,
+}
 impl Default for Theme {
     fn default() -> Self {
         Self {
@@ -191,6 +201,34 @@ impl std::str::FromStr for ThemeId {
     }
 }
 impl Theme {
+    pub fn file_dialog(&self) -> FileDialogStyles {
+        let light = self.editor.bg == Some(Color::Idx(15));
+        let bg = if light { 15 } else { 0 };
+        let body = colors(if light { 0 } else { 15 }, bg);
+        let field = colors(if light { 0 } else { 15 }, if light { 7 } else { 8 });
+        let mut directory = body.clone();
+        directory.fg = if light {
+            Some(Color::Idx(4))
+        } else {
+            self.editor.fg
+        };
+        directory.bold = true;
+        let mut active = self.selected.clone();
+        active.bold = true;
+        let mut button = field.clone();
+        button.bold = true;
+        let mut title = self.title.clone();
+        title.bold = true;
+        FileDialogStyles {
+            body,
+            border: colors(if light { 8 } else { 7 }, bg),
+            title,
+            directory,
+            field,
+            button,
+            active,
+        }
+    }
     // Semantic editor roles share the document background and readable ANSI inks.
     pub fn editor_syntax(&self) -> [Style; 5] {
         let inks = if self.editor.bg == Some(Color::Idx(15)) {
@@ -658,10 +696,20 @@ mod tests {
         });
         for id in ThemeId::ALL {
             let t = Theme::named(id);
+            let dialog = t.file_dialog();
             for (name, style) in t
                 .editor_syntax()
                 .into_iter()
                 .map(|s| ("editor_syntax", s))
+                .chain([
+                    ("file_dialog_body", dialog.body),
+                    ("file_dialog_border", dialog.border),
+                    ("file_dialog_title", dialog.title),
+                    ("file_dialog_directory", dialog.directory),
+                    ("file_dialog_field", dialog.field),
+                    ("file_dialog_button", dialog.button),
+                    ("file_dialog_active", dialog.active),
+                ])
                 .chain([
                     ("inactive_title", t.inactive_title),
                     ("title", t.title),
